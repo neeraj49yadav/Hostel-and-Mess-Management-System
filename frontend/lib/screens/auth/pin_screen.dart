@@ -902,19 +902,15 @@ class _PinScreenState extends State<PinScreen> {
       ),
       body: Stack(
         children: [
-          // 🌊 App Logo Background Watermark (Login Page Only - Responsive & Fully In-Frame)
+          // 🌊 App Logo Background Watermark (2X Larger Scale)
           Positioned.fill(
             child: IgnorePointer(
               child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: 460,
-                      maxHeight: 460,
-                    ),
+                child: ClipRect(
+                  child: Transform.scale(
+                    scale: 2.0,
                     child: Opacity(
-                      opacity: isDark ? 0.08 : 0.05,
+                      opacity: isDark ? 0.09 : 0.06,
                       child: Image.asset(
                         'assets/images/app_logo.jpg',
                         fit: BoxFit.contain,
