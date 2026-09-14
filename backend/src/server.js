@@ -16,19 +16,17 @@ const statsRoutes = require('./routes/statsRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 1. Security Headers via Helmet
-app.use(helmetMiddleware);
-
-// 2. Secure CORS Configuration
-const corsOptions = {
-  origin: true,
+// 1. Permissive Cross-Origin Resource Sharing (CORS) for Web & Mobile
+app.use(cors({
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'x-org-id', 'X-Org-Id', 'x-org-code', 'X-Org-Code'],
-  exposedHeaders: ['Authorization'],
-  credentials: true,
-  maxAge: 86400 // 24 hours preflight cache
-};
-app.use(cors(corsOptions));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'x-org-id', 'X-Org-Id', 'x-org-code', 'X-Org-Code', 'x-admin-id', 'X-Admin-Id'],
+  exposedHeaders: ['Authorization']
+}));
+app.options('*', cors());
+
+// 2. Security Headers via Helmet
+app.use(helmetMiddleware);
 
 // 3. Request Body Parsing & Sanitization
 app.use(express.json({ limit: '50mb' }));

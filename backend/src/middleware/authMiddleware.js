@@ -8,6 +8,10 @@ const db = require('../config/db');
  * Middleware to verify JWT Bearer tokens with graceful session fallback
  */
 exports.verifyToken = (req, res, next) => {
+  // Always allow CORS OPTIONS preflight requests to pass through
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
   try {
     const authHeader = req.headers['authorization'] || req.headers['Authorization'];
 
