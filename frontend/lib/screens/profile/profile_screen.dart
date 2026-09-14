@@ -1013,8 +1013,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: () async {
                     Navigator.pop(ctx);
                     final b64 = await _pickBase64Image(ImageSource.camera);
-                    if (b64 != null) {
-                      await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: b64);
+                    if (b64 != null && mounted) {
+                      final ok = await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: b64);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? '✅ Profile photo updated successfully!' : (auth.errorMessage ?? 'Failed to update photo')),
+                            backgroundColor: ok ? AppColors.success : AppColors.danger,
+                          ),
+                        );
+                      }
                     }
                   },
                 ),
@@ -1024,8 +1032,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: () async {
                     Navigator.pop(ctx);
                     final b64 = await _pickBase64Image(ImageSource.gallery);
-                    if (b64 != null) {
-                      await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: b64);
+                    if (b64 != null && mounted) {
+                      final ok = await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: b64);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? '✅ Profile photo updated successfully!' : (auth.errorMessage ?? 'Failed to update photo')),
+                            backgroundColor: ok ? AppColors.success : AppColors.danger,
+                          ),
+                        );
+                      }
                     }
                   },
                 ),
@@ -1035,7 +1051,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: const Text('Remove Photo', style: TextStyle(color: AppColors.danger)),
                     onTap: () async {
                       Navigator.pop(ctx);
-                      await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: '');
+                      final ok = await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: '');
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? 'Profile photo removed' : 'Failed to remove photo'),
+                            backgroundColor: ok ? AppColors.info : AppColors.danger,
+                          ),
+                        );
+                      }
                     },
                   ),
               ],

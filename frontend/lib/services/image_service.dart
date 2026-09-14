@@ -17,12 +17,28 @@ class ImageService {
     int imageQuality = 70,
   }) async {
     try {
-      final XFile? file = await _picker.pickImage(
-        source: source,
-        maxWidth: maxWidth.toDouble(),
-        maxHeight: maxHeight.toDouble(),
-        imageQuality: imageQuality,
-      );
+      XFile? file;
+      try {
+        file = await _picker.pickImage(
+          source: source,
+          maxWidth: maxWidth.toDouble(),
+          maxHeight: maxHeight.toDouble(),
+          imageQuality: imageQuality,
+        );
+      } catch (pickerErr) {
+        // Fallback: If direct camera capture fails (e.g. desktop web browser or restricted permission),
+        // gracefully fall back to file selector so user is never blocked.
+        if (source == ImageSource.camera) {
+          file = await _picker.pickImage(
+            source: ImageSource.gallery,
+            maxWidth: maxWidth.toDouble(),
+            maxHeight: maxHeight.toDouble(),
+            imageQuality: imageQuality,
+          );
+        } else {
+          rethrow;
+        }
+      }
 
       if (file == null) return null;
 
