@@ -1,34 +1,23 @@
 import 'package:flutter/foundation.dart';
 
 class ApiConstants {
+  // Production Cloud Backend on Render
+  static const String productionCloudUrl = 'https://hostel-and-mess-management-system.onrender.com/api/v1';
+
   // Default URL based on platform and runtime origin
   static String get defaultBaseUrl {
     if (kIsWeb) {
       try {
         final uri = Uri.base;
-        // If web app is hosted on Firebase, custom domain, or HTTPS
-        if (uri.host.contains('web.app') ||
-            uri.host.contains('firebaseapp.com') ||
-            uri.scheme == 'https' ||
-            uri.port == 5000) {
-          return '${uri.origin}/api/v1';
-        }
-        // If web app is running in Flutter debug / dev server on localhost
+        // If web app is running locally on localhost dev server
         if (uri.host == 'localhost' || uri.host == '127.0.0.1') {
           return 'http://localhost:5000/api/v1';
         }
-        // If web app is accessed via LAN IP on a dev server port (e.g. 10.74.11.194:8080)
-        if (uri.host.isNotEmpty && uri.host != 'null' && !uri.host.startsWith('file')) {
-          return 'http://${uri.host}:5000/api/v1';
-        }
       } catch (_) {}
-      return 'http://localhost:5000/api/v1';
+      return productionCloudUrl;
     }
-    // On Android physical devices or emulator
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.20.35.194:5000/api/v1';
-    }
-    return 'http://localhost:5000/api/v1';
+    // On Android physical devices, iOS, or release builds: Connect to Live Cloud
+    return productionCloudUrl;
   }
 
   // Endpoints
