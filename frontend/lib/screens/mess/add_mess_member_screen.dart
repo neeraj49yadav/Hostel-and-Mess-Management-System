@@ -68,6 +68,25 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<HostelProvider>().fetchStudents();
     });
+    _recoverLostCameraImage();
+  }
+
+  Future<void> _recoverLostCameraImage() async {
+    try {
+      final lostPhoto = await ImageService.retrieveLostData();
+      if (lostPhoto != null && mounted) {
+        setState(() {
+          _photoUrlController.text = lostPhoto;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📸 Camera photo successfully recovered!'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   @override
@@ -83,23 +102,26 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
   }
 
   Future<void> _pickImageFromDevice(ImageSource source, BuildContext modalCtx) async {
+    // 1. Dismiss bottom sheet modal first to free memory before native camera launches
+    if (modalCtx.mounted) {
+      Navigator.of(modalCtx).pop();
+    }
+
     try {
+      await ImageService.setPendingPhotoContext('mess_member');
       final base64String = await ImageService.pickAndCompressImage(
         source: source,
         maxWidth: 600,
         maxHeight: 600,
         imageQuality: 70,
       );
+      await ImageService.clearPendingPhotoContext();
 
       if (base64String != null && mounted) {
         final sizeKb = ImageService.getApproximateSizeKb(base64String);
         setState(() {
           _photoUrlController.text = base64String;
         });
-
-        if (modalCtx.mounted) {
-          Navigator.of(modalCtx).pop();
-        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -110,6 +132,7 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
         );
       }
     } catch (e) {
+      await ImageService.clearPendingPhotoContext();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not pick photo: $e'), backgroundColor: AppColors.danger),

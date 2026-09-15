@@ -31,19 +31,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
       auth.refreshAdmins();
       auth.loadNotifications();
     });
+    _recoverLostProfileImage();
+  }
+
+  Future<void> _recoverLostProfileImage() async {
+    try {
+      final lostPhoto = await ImageService.retrieveLostData();
+      if (lostPhoto != null && mounted) {
+        final ctx = await ImageService.getPendingPhotoContext();
+        await ImageService.clearPendingPhotoContext();
+        if (!mounted) return;
+        final auth = context.read<AuthProvider>();
+        if (ctx == 'logo' && auth.currentOrganization != null) {
+          final org = auth.currentOrganization!;
+          await auth.updateOrganization(
+            name: org.name,
+            logo: lostPhoto,
+            city: org.city,
+            contactPhone: org.contactPhone,
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('📸 Restored captured photo as hostel logo!'), backgroundColor: AppColors.success),
+            );
+          }
+        } else if (auth.currentAdmin != null) {
+          final admin = auth.currentAdmin!;
+          await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: lostPhoto);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('📸 Restored captured photo to your profile!'), backgroundColor: AppColors.success),
+            );
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   // --- Image Picker Helper (Auto-Compressed) ---
-  Future<String?> _pickBase64Image(ImageSource source) async {
+  Future<String?> _pickBase64Image(ImageSource source, [String contextType = 'profile']) async {
     try {
+      await ImageService.setPendingPhotoContext(contextType);
       final base64String = await ImageService.pickAndCompressImage(
         source: source,
         maxWidth: 500,
         maxHeight: 500,
         imageQuality: 70,
       );
+      await ImageService.clearPendingPhotoContext();
       return base64String;
     } catch (e) {
+      await ImageService.clearPendingPhotoContext();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to pick photo: $e'), backgroundColor: AppColors.danger),
@@ -618,7 +656,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: const Text('Take Photo with Camera'),
                   onTap: () async {
                     Navigator.pop(ctx);
-                    final b64 = await _pickBase64Image(ImageSource.camera);
+                    final b64 = await _pickBase64Image(ImageSource.camera, 'logo');
                     if (b64 != null) {
                       await auth.updateOrganization(
                         name: org.name,
@@ -634,7 +672,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: const Text('Choose from Gallery'),
                   onTap: () async {
                     Navigator.pop(ctx);
-                    final b64 = await _pickBase64Image(ImageSource.gallery);
+                    final b64 = await _pickBase64Image(ImageSource.gallery, 'logo');
                     if (b64 != null) {
                       await auth.updateOrganization(
                         name: org.name,

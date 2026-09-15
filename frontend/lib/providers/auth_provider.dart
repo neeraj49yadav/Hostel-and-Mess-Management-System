@@ -38,14 +38,25 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
-  AuthProvider() {
+  AuthProvider({
+    bool initialIsAuthenticated = false,
+    AdminUser? initialAdmin,
+    Organization? initialOrg,
+  }) {
+    if (initialIsAuthenticated && initialAdmin != null) {
+      _isAuthenticated = true;
+      _currentAdmin = initialAdmin;
+      if (initialOrg != null) {
+        _currentOrganization = initialOrg;
+      }
+    }
     _initOrganizationAndAdmins();
   }
 
   Future<void> _initOrganizationAndAdmins() async {
+    await _restoreSavedSession();
     await loadOrganizations();
     await _loadAvailableAdmins();
-    await _restoreSavedSession();
     await loadNotifications();
   }
 
@@ -56,28 +67,31 @@ class AuthProvider with ChangeNotifier {
       final loggedAdminId = prefs.getString('logged_admin_id');
 
       if (token != null && token.isNotEmpty && loggedAdminId != null && loggedAdminId.isNotEmpty) {
-        AdminUser? matched;
-        for (final a in _availableAdmins) {
-          if (a.id == loggedAdminId) {
-            matched = a;
-            break;
-          }
-        }
+        final savedName = prefs.getString('logged_admin_name') ?? 'Admin';
+        final savedPhone = prefs.getString('logged_admin_phone') ?? '';
+        final savedRole = prefs.getString('logged_admin_role') ?? 'Admin';
+        final savedPhoto = prefs.getString('logged_admin_photo');
+        final savedOrgId = prefs.getString('selected_org_id') ?? 'org-default';
+        final savedOrgCode = prefs.getString('selected_org_code') ?? 'HOSTEL';
 
-        if (matched != null) {
-          _currentAdmin = matched;
-        } else {
-          final savedName = prefs.getString('logged_admin_name') ?? 'Admin';
-          final savedPhone = prefs.getString('logged_admin_phone') ?? '';
-          _currentAdmin = AdminUser(
-            id: loggedAdminId,
-            name: savedName,
-            role: 'Admin',
-            phone: savedPhone,
-            orgId: _currentOrganization?.id ?? 'org-default',
-            orgCode: _currentOrganization?.code ?? 'HOSTEL',
-          );
-        }
+        _currentAdmin = AdminUser(
+          id: loggedAdminId,
+          name: savedName,
+          role: savedRole,
+          phone: savedPhone,
+          profilePhoto: savedPhoto,
+          orgId: savedOrgId,
+          orgCode: savedOrgCode,
+        );
+
+        _currentOrganization ??= Organization(
+          id: savedOrgId,
+          name: prefs.getString('selected_org_name') ?? 'My Hostel & Mess',
+          code: savedOrgCode,
+          city: prefs.getString('selected_org_city') ?? '',
+          contactPhone: prefs.getString('selected_org_phone') ?? '',
+          logo: prefs.getString('selected_org_logo'),
+        );
 
         _isAuthenticated = true;
         notifyListeners();
@@ -293,6 +307,12 @@ class AuthProvider with ChangeNotifier {
           profilePhoto: profilePhoto,
         );
       }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('logged_admin_name', name);
+      if (phone != null) await prefs.setString('logged_admin_phone', phone);
+      if (profilePhoto != null && profilePhoto.isNotEmpty) {
+        await prefs.setString('logged_admin_photo', profilePhoto);
+      }
       await _loadAvailableAdmins();
       _isLoading = false;
       notifyListeners();
@@ -335,6 +355,12 @@ class AuthProvider with ChangeNotifier {
         );
         await _api.setSelectedOrg(_currentOrganization!.id, _currentOrganization!.code);
       }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_org_name', name);
+      if (city != null) await prefs.setString('selected_org_city', city);
+      if (contactPhone != null) await prefs.setString('selected_org_phone', contactPhone);
+      if (logo != null && logo.isNotEmpty) await prefs.setString('selected_org_logo', logo);
 
       await loadOrganizations();
       _isLoading = false;
@@ -444,6 +470,19 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('logged_admin_id', admin.id);
       await prefs.setString('logged_admin_name', admin.name);
+      await prefs.setString('logged_admin_role', admin.role);
+      await prefs.setString('logged_admin_phone', admin.phone);
+      if (admin.profilePhoto != null && admin.profilePhoto!.isNotEmpty) {
+        await prefs.setString('logged_admin_photo', admin.profilePhoto!);
+      }
+      await prefs.setString('selected_org_id', newOrg.id);
+      await prefs.setString('selected_org_code', newOrg.code);
+      await prefs.setString('selected_org_name', newOrg.name);
+      await prefs.setString('selected_org_city', newOrg.city);
+      await prefs.setString('selected_org_phone', newOrg.contactPhone);
+      if (newOrg.logo != null && newOrg.logo!.isNotEmpty) {
+        await prefs.setString('selected_org_logo', newOrg.logo!);
+      }
 
       await loadOrganizations();
       await _loadAvailableAdmins();
@@ -482,8 +521,24 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('logged_admin_id', admin.id);
       await prefs.setString('logged_admin_name', admin.name);
+      await prefs.setString('logged_admin_role', admin.role);
+      await prefs.setString('logged_admin_phone', admin.phone);
+      if (admin.profilePhoto != null && admin.profilePhoto!.isNotEmpty) {
+        await prefs.setString('logged_admin_photo', admin.profilePhoto!);
+      } else {
+        await prefs.remove('logged_admin_photo');
+      }
+
       if (_currentOrganization != null) {
         await _api.setSelectedOrg(_currentOrganization!.id, _currentOrganization!.code);
+        await prefs.setString('selected_org_name', _currentOrganization!.name);
+        await prefs.setString('selected_org_city', _currentOrganization!.city);
+        await prefs.setString('selected_org_phone', _currentOrganization!.contactPhone);
+        if (_currentOrganization!.logo != null && _currentOrganization!.logo!.isNotEmpty) {
+          await prefs.setString('selected_org_logo', _currentOrganization!.logo!);
+        } else {
+          await prefs.remove('selected_org_logo');
+        }
       }
 
       notifyListeners();
@@ -503,6 +558,8 @@ class AuthProvider with ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('logged_admin_id', admin.id);
         await prefs.setString('logged_admin_name', admin.name);
+        await prefs.setString('logged_admin_role', admin.role);
+        await prefs.setString('logged_admin_phone', admin.phone);
         await _api.setAuthToken('fallback-token-${admin.id}');
 
         notifyListeners();
@@ -523,6 +580,9 @@ class AuthProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('logged_admin_id');
     await prefs.remove('logged_admin_name');
+    await prefs.remove('logged_admin_role');
+    await prefs.remove('logged_admin_phone');
+    await prefs.remove('logged_admin_photo');
     await loadOrganizations();
     await _loadAvailableAdmins();
     notifyListeners();

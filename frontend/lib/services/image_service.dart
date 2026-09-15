@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service for Auto Image Compression & Storage Optimization
 /// Resizes and compresses portrait images to ~30KB-70KB while preserving crisp face/portrait clarity.
@@ -24,6 +25,7 @@ class ImageService {
           maxWidth: maxWidth.toDouble(),
           maxHeight: maxHeight.toDouble(),
           imageQuality: imageQuality,
+          requestFullMetadata: false,
         );
       } catch (pickerErr) {
         // Fallback: If direct camera capture fails (e.g. desktop web browser or restricted permission),
@@ -34,6 +36,7 @@ class ImageService {
             maxWidth: maxWidth.toDouble(),
             maxHeight: maxHeight.toDouble(),
             imageQuality: imageQuality,
+            requestFullMetadata: false,
           );
         } else {
           rethrow;
@@ -64,6 +67,29 @@ class ImageService {
     } catch (_) {
       return null;
     }
+  }
+
+  static Future<void> setPendingPhotoContext(String contextType) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pending_photo_context', contextType);
+    } catch (_) {}
+  }
+
+  static Future<String?> getPendingPhotoContext() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('pending_photo_context');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> clearPendingPhotoContext() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('pending_photo_context');
+    } catch (_) {}
   }
 
   /// Decodes base64 string (handles Data URI prefix automatically)
