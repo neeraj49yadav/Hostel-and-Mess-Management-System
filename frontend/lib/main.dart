@@ -7,6 +7,7 @@ import 'providers/hostel_provider.dart';
 import 'providers/mess_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/auth/pin_screen.dart';
+import 'screens/home_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,15 +27,15 @@ class HostelMessAdminApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => HostelProvider()),
         ChangeNotifierProvider(create: (_) => MessProvider()),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, child) {
+      child: Consumer2<ThemeProvider, AuthProvider>(
+        builder: (context, themeProvider, authProvider, child) {
           return MaterialApp(
             title: 'Hostel and Mess Management System',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.themeMode,
-            home: const PinScreen(),
+            home: authProvider.isAuthenticated ? const HomeShell() : const PinScreen(),
           );
         },
       ),

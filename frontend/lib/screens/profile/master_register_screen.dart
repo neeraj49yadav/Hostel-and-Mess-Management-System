@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +7,7 @@ import '../../core/utils/formatters.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/pdf_service.dart';
+import '../../widgets/app_avatar_image.dart';
 
 class MasterRegisterScreen extends StatefulWidget {
   const MasterRegisterScreen({super.key});
@@ -703,33 +703,23 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
   }
 
   Widget _buildAvatar(String photoUrl, String name, bool isLeft) {
-    if (photoUrl.isNotEmpty) {
-      if (photoUrl.startsWith('data:image')) {
-        try {
-          final bytes = base64Decode(photoUrl.split(',').last);
-          return CircleAvatar(
-            radius: 22,
-            backgroundColor: isLeft ? Colors.grey.shade300 : AppColors.primary.withValues(alpha: 0.1),
-            backgroundImage: MemoryImage(bytes),
-          );
-        } catch (_) {}
-      } else if (photoUrl.startsWith('http')) {
-        return CircleAvatar(
-          radius: 22,
-          backgroundColor: isLeft ? Colors.grey.shade300 : AppColors.primary.withValues(alpha: 0.1),
-          backgroundImage: NetworkImage(photoUrl),
-        );
-      }
-    }
-
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    return CircleAvatar(
+    final fallback = CircleAvatar(
       radius: 22,
       backgroundColor: isLeft ? Colors.grey.shade400 : AppColors.primary,
       child: Text(
         initial,
         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
       ),
+    );
+
+    return AppAvatarImage(
+      photoUrl: photoUrl,
+      width: 44,
+      height: 44,
+      isCircle: true,
+      fit: BoxFit.cover,
+      fallback: fallback,
     );
   }
 

@@ -118,7 +118,7 @@ class ApiService {
       uri = uri.replace(queryParameters: params);
     }
     final headers = await _buildHeaders();
-    final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 10));
+    final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 60));
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {
@@ -137,7 +137,7 @@ class ApiService {
           headers: headers,
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(const Duration(seconds: 60));
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {
@@ -156,7 +156,7 @@ class ApiService {
           headers: headers,
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(const Duration(seconds: 60));
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {
@@ -175,7 +175,7 @@ class ApiService {
           headers: headers,
           body: body != null ? jsonEncode(body) : null,
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(const Duration(seconds: 60));
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {

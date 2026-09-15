@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../core/constants/app_colors.dart';
 import '../models/student.dart';
+import 'app_avatar_image.dart';
 
 class StudentAvatar extends StatelessWidget {
   final Student? student;
@@ -37,59 +37,14 @@ class StudentAvatar extends StatelessWidget {
     final primaryColor = isDark ? AppColors.primaryLight : AppColors.primary;
     final initial = effectiveName.trim().isNotEmpty ? effectiveName.trim()[0].toUpperCase() : 'S';
 
-    Widget avatarContent;
-
-    if (effectivePhoto != null && effectivePhoto.trim().isNotEmpty) {
-      final photo = effectivePhoto.trim();
-      if (photo.startsWith('data:image') || (!photo.startsWith('http') && photo.length > 100)) {
-        // Base64 decoded image
-        try {
-          final cleanBase64 = photo.contains(',') ? photo.split(',')[1] : photo;
-          final bytes = base64Decode(cleanBase64);
-          avatarContent = ClipOval(
-            child: Image.memory(
-              bytes,
-              width: radius * 2,
-              height: radius * 2,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => _buildFallbackInitial(initial, isDark, primaryColor),
-            ),
-          );
-        } catch (_) {
-          avatarContent = _buildFallbackInitial(initial, isDark, primaryColor);
-        }
-      } else if (photo.startsWith('http')) {
-        // Network image URL
-        avatarContent = ClipOval(
-          child: Image.network(
-            photo,
-            width: radius * 2,
-            height: radius * 2,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildFallbackInitial(initial, isDark, primaryColor),
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return Container(
-                width: radius * 2,
-                height: radius * 2,
-                color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
-                child: const Center(
-                  child: SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      } else {
-        avatarContent = _buildFallbackInitial(initial, isDark, primaryColor);
-      }
-    } else {
-      avatarContent = _buildFallbackInitial(initial, isDark, primaryColor);
-    }
+    final avatarContent = AppAvatarImage(
+      photoUrl: effectivePhoto,
+      width: radius * 2,
+      height: radius * 2,
+      isCircle: true,
+      fit: BoxFit.cover,
+      fallback: _buildFallbackInitial(initial, isDark, primaryColor),
+    );
 
     Widget rootWidget = Container(
       width: radius * 2,
@@ -283,37 +238,14 @@ void showStudentImagePreview(
 }
 
 Widget _buildPreviewImage(String? photoUrl, String initial, bool isDark) {
-  if (photoUrl != null && photoUrl.trim().isNotEmpty) {
-    final photo = photoUrl.trim();
-    if (photo.startsWith('data:image') || (!photo.startsWith('http') && photo.length > 100)) {
-      try {
-        final cleanBase64 = photo.contains(',') ? photo.split(',')[1] : photo;
-        final bytes = base64Decode(cleanBase64);
-        return Image.memory(
-          bytes,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => _buildPreviewFallback(initial, isDark),
-        );
-      } catch (_) {
-        return _buildPreviewFallback(initial, isDark);
-      }
-    } else if (photo.startsWith('http')) {
-      return Image.network(
-        photo,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => _buildPreviewFallback(initial, isDark),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return const SizedBox(
-            height: 250,
-            child: Center(child: CircularProgressIndicator(color: Colors.white)),
-          );
-        },
-      );
-    }
-  }
-
-  return _buildPreviewFallback(initial, isDark);
+  return AppAvatarImage(
+    photoUrl: photoUrl,
+    width: double.infinity,
+    height: 350,
+    isCircle: false,
+    fit: BoxFit.contain,
+    fallback: _buildPreviewFallback(initial, isDark),
+  );
 }
 
 Widget _buildPreviewFallback(String initial, bool isDark) {

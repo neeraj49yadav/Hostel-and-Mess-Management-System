@@ -53,6 +53,9 @@ function parseBase64(base64Str) {
     }
   }
 
+  // Strip all whitespaces and newlines
+  cleanBase64 = cleanBase64.replace(/[\r\n\s]/g, '');
+
   let ext = 'jpg';
   if (mimeType.includes('png')) ext = 'png';
   else if (mimeType.includes('webp')) ext = 'webp';
@@ -69,9 +72,14 @@ function isBase64Image(str) {
   if (!str || typeof str !== 'string') return false;
   const s = str.trim();
   if (s.startsWith('data:image/')) return true;
-  if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/uploads/')) return false;
-  // If string is long (>150 chars) and doesn't contain slashes or spaces, it is raw base64
-  return s.length > 150 && !s.includes(' ') && !s.includes('/') && !s.includes('\\');
+  if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/uploads/') || s.startsWith('blob:') || s.startsWith('file://')) {
+    return false;
+  }
+  const cleaned = s.replace(/[\r\n\s]/g, '');
+  if (cleaned.length > 80 && /^[A-Za-z0-9+/=]+$/.test(cleaned)) {
+    return true;
+  }
+  return false;
 }
 
 /**

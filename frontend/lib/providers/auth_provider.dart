@@ -45,7 +45,46 @@ class AuthProvider with ChangeNotifier {
   Future<void> _initOrganizationAndAdmins() async {
     await loadOrganizations();
     await _loadAvailableAdmins();
+    await _restoreSavedSession();
     await loadNotifications();
+  }
+
+  Future<void> _restoreSavedSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_jwt_token');
+      final loggedAdminId = prefs.getString('logged_admin_id');
+
+      if (token != null && token.isNotEmpty && loggedAdminId != null && loggedAdminId.isNotEmpty) {
+        AdminUser? matched;
+        for (final a in _availableAdmins) {
+          if (a.id == loggedAdminId) {
+            matched = a;
+            break;
+          }
+        }
+
+        if (matched != null) {
+          _currentAdmin = matched;
+        } else {
+          final savedName = prefs.getString('logged_admin_name') ?? 'Admin';
+          final savedPhone = prefs.getString('logged_admin_phone') ?? '';
+          _currentAdmin = AdminUser(
+            id: loggedAdminId,
+            name: savedName,
+            role: 'Admin',
+            phone: savedPhone,
+            orgId: _currentOrganization?.id ?? 'org-default',
+            orgCode: _currentOrganization?.code ?? 'HOSTEL',
+          );
+        }
+
+        _isAuthenticated = true;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] Error restoring session: $e');
+    }
   }
 
   Future<void> loadNotifications() async {

@@ -1,26 +1,33 @@
 const fs = require('fs');
 const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
 
 let admin = null;
 let firestoreDb = null;
 let supabase = null;
 
-// 1. Supabase Cloud Database Client
-try {
-  let supabaseUrl = process.env.SUPABASE_URL;
-  if (supabaseUrl) {
-    supabaseUrl = supabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+// 1. Supabase Cloud Database Client Initializer
+function initSupabaseClient() {
+  if (supabase) return supabase;
+  try {
+    let supabaseUrl = process.env.SUPABASE_URL;
+    if (supabaseUrl) {
+      supabaseUrl = supabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+    }
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+    if (supabaseUrl && supabaseKey) {
+      supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: { persistSession: false, autoRefreshToken: false }
+      });
+      console.log('⚡ Connected to Supabase Cloud Database:', supabaseUrl);
+    }
+  } catch (e) {
+    console.warn('Supabase initialization warning:', e.message);
   }
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (supabaseUrl && supabaseKey) {
-    supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
-    console.log('⚡ Connected to Supabase Cloud Database:', supabaseUrl);
-  }
-} catch (e) {
-  // Supabase not configured or package missing
+  return supabase;
 }
+
+initSupabaseClient();
 
 // 2. Google Cloud Firestore Client
 try {
@@ -452,7 +459,7 @@ class Database {
 
   // Supabase Client Getter for services & keep-alive ping
   getSupabaseClient() {
-    return supabase;
+    return initSupabaseClient();
   }
 }
 

@@ -15,6 +15,7 @@ import 'finance/cashbook_screen.dart';
 import 'audit/audit_log_screen.dart';
 import 'auth/pin_screen.dart';
 import 'profile/profile_screen.dart';
+import '../widgets/app_avatar_image.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -401,52 +402,22 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Widget _buildAdminAvatar(String? photoUrl, String name) {
-    if (photoUrl != null && photoUrl.trim().isNotEmpty) {
-      final photo = photoUrl.trim();
-      try {
-        final cleanBase64 = photo.contains(',') ? photo.split(',')[1] : photo;
-        final bytes = base64Decode(cleanBase64);
-        return Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6), width: 2),
-          ),
-          child: ClipOval(
-            child: Image.memory(
-              bytes,
-              width: 44,
-              height: 44,
-              fit: BoxFit.cover,
-              errorBuilder: (c, e, s) => _buildFallbackAdminAvatar(),
-            ),
-          ),
-        );
-      } catch (_) {
-        if (photo.startsWith('http')) {
-          return Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6), width: 2),
-            ),
-            child: ClipOval(
-              child: Image.network(
-                photo,
-                width: 44,
-                height: 44,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => _buildFallbackAdminAvatar(),
-              ),
-            ),
-          );
-        }
-      }
-    }
-
-    return _buildFallbackAdminAvatar();
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6), width: 2),
+      ),
+      child: AppAvatarImage(
+        photoUrl: photoUrl,
+        width: 44,
+        height: 44,
+        isCircle: true,
+        fit: BoxFit.cover,
+        fallback: _buildFallbackAdminAvatar(),
+      ),
+    );
   }
 
   Widget _buildFallbackAdminAvatar() {

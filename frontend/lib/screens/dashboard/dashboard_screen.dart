@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
@@ -15,71 +14,35 @@ import '../mess/add_mess_member_screen.dart';
 import '../finance/record_payment_screen.dart';
 import '../dues_expiry/dues_expiry_screen.dart';
 import '../../services/export_download_service.dart';
+import '../../widgets/app_avatar_image.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   Widget _buildAdminProfileAvatar(String? photoUrl, String name) {
-    if (photoUrl != null && photoUrl.trim().isNotEmpty) {
-      final photo = photoUrl.trim();
-      try {
-        final cleanBase64 = photo.contains(',') ? photo.split(',')[1] : photo;
-        final bytes = base64Decode(cleanBase64);
-        return Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          child: ClipOval(
-            child: Image.memory(
-              bytes,
-              width: 52,
-              height: 52,
-              fit: BoxFit.cover,
-              errorBuilder: (c, e, s) => _buildFallbackShield(),
-            ),
-          ),
-        );
-      } catch (_) {
-        if (photo.startsWith('http')) {
-          return Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ClipOval(
-              child: Image.network(
-                photo,
-                width: 52,
-                height: 52,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => _buildFallbackShield(),
-              ),
-            ),
-          );
-        }
-      }
-    }
-
-    return _buildFallbackShield();
+        ],
+      ),
+      child: AppAvatarImage(
+        photoUrl: photoUrl,
+        width: 52,
+        height: 52,
+        isCircle: true,
+        fit: BoxFit.cover,
+        fallback: _buildFallbackShield(),
+      ),
+    );
   }
 
   Widget _buildFallbackShield() {

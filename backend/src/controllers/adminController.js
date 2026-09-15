@@ -619,7 +619,7 @@ exports.updateProfile = async (req, res) => {
 };
 
 // Update Organization / Hostel Details (Name, Logo, City, Phone)
-exports.updateOrganization = (req, res) => {
+exports.updateOrganization = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { name, logo, city, contactPhone } = req.body;
@@ -631,6 +631,11 @@ exports.updateOrganization = (req, res) => {
     const organizations = db.getCollection('organizations') || [];
     let index = organizations.findIndex(o => o.id === orgId);
 
+    let processedLogo = logo;
+    if (logo !== undefined) {
+      processedLogo = await storageService.processImage(logo, 'logos');
+    }
+
     if (index === -1) {
       // If default org doesn't exist in array yet, create it
       const newOrg = {
@@ -639,7 +644,7 @@ exports.updateOrganization = (req, res) => {
         code: (req.admin?.orgCode || 'CITYPRIDE').toUpperCase(),
         city: (city || 'Main Campus').trim(),
         contactPhone: (contactPhone || '').trim(),
-        logo: logo !== undefined ? logo.trim() : '',
+        logo: processedLogo || '',
         createdAt: new Date().toISOString()
       };
       organizations.push(newOrg);
@@ -649,7 +654,7 @@ exports.updateOrganization = (req, res) => {
       organizations[index].name = name.trim();
       if (city !== undefined) organizations[index].city = city.trim();
       if (contactPhone !== undefined) organizations[index].contactPhone = contactPhone.trim();
-      if (logo !== undefined) organizations[index].logo = logo.trim();
+      if (logo !== undefined) organizations[index].logo = processedLogo || '';
       organizations[index].updatedAt = new Date().toISOString();
       db.saveCollection('organizations', organizations);
     }

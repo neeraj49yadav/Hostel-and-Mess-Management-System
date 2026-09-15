@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
@@ -7,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
 import '../home_shell.dart';
+import '../../widgets/app_avatar_image.dart';
 
 class PinScreen extends StatefulWidget {
   const PinScreen({super.key});
@@ -1054,72 +1054,33 @@ class _PinScreenState extends State<PinScreen> {
     final logo = org?.logo;
     final initial = (org != null && org.name.isNotEmpty) ? org.name[0].toUpperCase() : 'H';
 
-    if (logo != null && logo.trim().isNotEmpty) {
-      try {
-        final cleanBase64 = logo.contains(',') ? logo.split(',')[1] : logo;
-        final bytes = base64Decode(cleanBase64);
-        return Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.borderLight,
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? AppColors.borderDark : AppColors.borderLight,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16.5),
-            child: Image.memory(
-              bytes,
-              width: 72,
-              height: 72,
-              fit: BoxFit.cover,
-              errorBuilder: (c, e, s) => _buildFallbackHostelBadge(initial, isDark),
-            ),
-          ),
-        );
-      } catch (_) {
-        if (logo.startsWith('http')) {
-          return Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isDark ? AppColors.borderDark : AppColors.borderLight,
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16.5),
-              child: Image.network(
-                logo,
-                width: 72,
-                height: 72,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => _buildFallbackHostelBadge(initial, isDark),
-              ),
-            ),
-          );
-        }
-      }
-    }
-    return _buildFallbackHostelBadge(initial, isDark);
+        ],
+      ),
+      child: AppAvatarImage(
+        photoUrl: logo,
+        width: 72,
+        height: 72,
+        borderRadius: BorderRadius.circular(16.5),
+        isCircle: false,
+        fit: BoxFit.cover,
+        fallback: _buildFallbackHostelBadge(initial, isDark),
+      ),
+    );
   }
 
   Widget _buildFallbackHostelBadge(String initial, bool isDark) {

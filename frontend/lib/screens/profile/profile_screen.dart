@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,6 +13,7 @@ import '../../services/image_service.dart';
 import '../audit/audit_log_screen.dart';
 import '../auth/pin_screen.dart';
 import 'master_register_screen.dart';
+import '../../widgets/app_avatar_image.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -60,38 +60,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     double radius = 26,
     bool isSelf = false,
   }) {
-    if (photoUrl != null && photoUrl.trim().isNotEmpty) {
-      final photo = photoUrl.trim();
-      try {
-        final cleanBase64 = photo.contains(',') ? photo.split(',')[1] : photo;
-        final bytes = base64Decode(cleanBase64);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: Image.memory(
-            bytes,
-            width: radius * 2,
-            height: radius * 2,
-            fit: BoxFit.cover,
-            errorBuilder: (c, e, s) => _buildFallbackShield(radius, isSelf),
-          ),
-        );
-      } catch (_) {
-        if (photo.startsWith('http')) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(radius),
-            child: Image.network(
-              photo,
-              width: radius * 2,
-              height: radius * 2,
-              fit: BoxFit.cover,
-              errorBuilder: (c, e, s) => _buildFallbackShield(radius, isSelf),
-            ),
-          );
-        }
-      }
-    }
-
-    return _buildFallbackShield(radius, isSelf);
+    return AppAvatarImage(
+      photoUrl: photoUrl,
+      width: radius * 2,
+      height: radius * 2,
+      isCircle: true,
+      fit: BoxFit.cover,
+      fallback: _buildFallbackShield(radius, isSelf),
+    );
   }
 
   Widget _buildFallbackShield(double radius, bool isSelf) {
@@ -595,37 +571,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String name,
     double radius = 28,
   }) {
-    if (logoUrl != null && logoUrl.trim().isNotEmpty) {
-      final logo = logoUrl.trim();
-      try {
-        final cleanBase64 = logo.contains(',') ? logo.split(',')[1] : logo;
-        final bytes = base64Decode(cleanBase64);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: Image.memory(
-            bytes,
-            width: radius * 2,
-            height: radius * 2,
-            fit: BoxFit.cover,
-            errorBuilder: (c, e, s) => _buildFallbackOrgIcon(radius),
-          ),
-        );
-      } catch (_) {
-        if (logo.startsWith('http')) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(radius),
-            child: Image.network(
-              logo,
-              width: radius * 2,
-              height: radius * 2,
-              fit: BoxFit.cover,
-              errorBuilder: (c, e, s) => _buildFallbackOrgIcon(radius),
-            ),
-          );
-        }
-      }
-    }
-    return _buildFallbackOrgIcon(radius);
+    return AppAvatarImage(
+      photoUrl: logoUrl,
+      width: radius * 2,
+      height: radius * 2,
+      borderRadius: BorderRadius.circular(radius),
+      isCircle: false,
+      fit: BoxFit.cover,
+      fallback: _buildFallbackOrgIcon(radius),
+    );
   }
 
   Widget _buildFallbackOrgIcon(double radius) {

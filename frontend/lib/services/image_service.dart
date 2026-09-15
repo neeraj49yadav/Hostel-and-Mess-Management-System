@@ -52,6 +52,20 @@ class ImageService {
     }
   }
 
+  /// On Android, retrieves any lost image if MainActivity was terminated while the camera was active
+  static Future<String?> retrieveLostData() async {
+    try {
+      final LostDataResponse response = await _picker.retrieveLostData();
+      if (response.isEmpty || response.file == null) return null;
+      final Uint8List bytes = await response.file!.readAsBytes();
+      if (bytes.isEmpty) return null;
+      final base64String = base64Encode(bytes);
+      return 'data:image/jpeg;base64,$base64String';
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Decodes base64 string (handles Data URI prefix automatically)
   static Uint8List? decodeBase64ToBytes(String? base64Str) {
     if (base64Str == null || base64Str.trim().isEmpty) return null;
