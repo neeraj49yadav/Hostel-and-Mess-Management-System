@@ -14,6 +14,7 @@ import '../mess/add_expense_screen.dart';
 import '../mess/add_mess_member_screen.dart';
 import '../finance/record_payment_screen.dart';
 import '../dues_expiry/dues_expiry_screen.dart';
+import '../../services/export_download_service.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -109,6 +110,10 @@ class DashboardScreen extends StatelessWidget {
     final dashProvider = context.read<DashboardProvider>();
     final hostelProvider = context.read<HostelProvider>();
     final messProvider = context.read<MessProvider>();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ExportDownloadService.checkAndPromptAnnualBackup(context);
+    });
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -401,6 +406,16 @@ class DashboardScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(builder: (_) => const LeaveRegisterScreen()),
                   );
+                },
+              ),
+              _buildActionTile(
+                context,
+                title: 'Cloud Backup',
+                subtitle: 'Save to Device',
+                icon: Icons.cloud_download_rounded,
+                color: const Color(0xFF6366F1),
+                onTap: () {
+                  ExportDownloadService.showBackupOptionsSheet(context);
                 },
               ),
             ],

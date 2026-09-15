@@ -46,7 +46,10 @@ exports.logAudit = ({ req, action, details, adminName, adminId, metadata }) => {
     };
 
     auditLogs.push(entry);
-    db.saveCollection('audit_logs', auditLogs);
+
+    // 🛡️ Cap audit logs to latest 2,000 entries to prevent 500MB DB bloat on Supabase Free Tier
+    const trimmedLogs = auditLogs.length > 2000 ? auditLogs.slice(-2000) : auditLogs;
+    db.saveCollection('audit_logs', trimmedLogs);
     return entry;
   } catch (err) {
     console.error('Failed to record audit log:', err);

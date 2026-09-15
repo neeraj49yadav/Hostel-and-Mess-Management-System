@@ -7,8 +7,10 @@ let supabase = null;
 
 // 1. Supabase Cloud Database Client
 try {
-  const { createClient } = require('@supabase/supabase-js');
-  const supabaseUrl = process.env.SUPABASE_URL;
+  let supabaseUrl = process.env.SUPABASE_URL;
+  if (supabaseUrl) {
+    supabaseUrl = supabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+  }
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
   if (supabaseUrl && supabaseKey) {
     supabase = createClient(supabaseUrl, supabaseKey, {
@@ -104,7 +106,24 @@ class Database {
 
   async init() {
     try {
-      // 1. Supabase Mode
+      // 1. Always read existing local db.json first so records are NEVER lost on restart!
+      if (fs.existsSync(dataFilePath)) {
+        try {
+          const raw = fs.readFileSync(dataFilePath, 'utf8');
+          const localData = JSON.parse(raw);
+          if (localData && typeof localData === 'object') {
+            for (const key of Object.keys(initialData)) {
+              if (localData[key] !== undefined) {
+                this.cache[key] = localData[key];
+              }
+            }
+          }
+        } catch (readErr) {
+          console.error('Error reading local data file on init:', readErr);
+        }
+      }
+
+      // 2. Supabase Cloud Sync
       if (supabase) {
         const collections = Object.keys(initialData);
         for (const col of collections) {
@@ -116,101 +135,94 @@ class Database {
               .eq('org_id', 'org-default')
               .maybeSingle();
 
-            if (data && data.items && Array.isArray(data.items)) {
-              this.cache[col] = data.items;
+            if (!error && data && data.items && Array.isArray(data.items)) {
+              if (col === 'organizations') {
+                // Merge organizations by ID so no hostel is ever lost
+                const localOrgs = Array.isArray(this.cache.organizations) ? this.cache.organizations : [];
+                const remoteOrgs = data.items;
+                const orgMap = new Map();
+                localOrgs.forEach(o => o && o.id && orgMap.set(o.id, o));
+                remoteOrgs.forEach(o => o && o.id && orgMap.set(o.id, o));
+                const mergedOrgs = Array.from(orgMap.values());
+                this.cache.organizations = mergedOrgs.length > 0 ? mergedOrgs : initialData.organizations;
+              } else if (col === 'admins') {
+                // Merge admins by ID
+                const localAdmins = Array.isArray(this.cache.admins) ? this.cache.admins : [];
+                const remoteAdmins = data.items;
+                const adminMap = new Map();
+                localAdmins.forEach(a => a && a.id && adminMap.set(a.id, a));
+                remoteAdmins.forEach(a => a && a.id && adminMap.set(a.id, a));
+                const mergedAdmins = Array.from(adminMap.values());
+                this.cache.admins = mergedAdmins.length > 0 ? mergedAdmins : initialData.admins;
+              } else {
+                if (data.items.length > 0 || !this.cache[col] || this.cache[col].length === 0) {
+                  this.cache[col] = data.items;
+                }
+              }
             } else {
-              this.cache[col] = initialData[col] || [];
+              // Supabase does not have this collection yet -> sync local cache to Supabase
               await supabase
                 .from('app_collections')
                 .upsert({
                   collection_name: col,
                   org_id: 'org-default',
-                  items: this.cache[col],
+                  items: this.cache[col] || [],
                   updated_at: new Date().toISOString()
                 });
             }
           } catch (colErr) {
-            console.error(`Error loading Supabase collection ${col}:`, colErr.message);
+            console.warn(`Warning loading Supabase collection ${col}:`, colErr.message);
           }
         }
+
+        // Cap audit logs on startup
+        if (this.cache.audit_logs && this.cache.audit_logs.length > 2000) {
+          this.cache.audit_logs = this.cache.audit_logs.slice(-2000);
+        }
+
+        // Persist consolidated state to local disk
+        try {
+          fs.writeFileSync(dataFilePath, JSON.stringify(this.cache, null, 2), 'utf8');
+        } catch (_) {}
+
         this.isInitialized = true;
         return;
       }
 
-      // 2. Google Firestore Mode
-      if (firestoreDb) {
-        // Load collections from Firestore into memory cache
-        const collections = Object.keys(initialData);
-        for (const col of collections) {
-          try {
-            const docSnap = await firestoreDb.collection('app_data').doc(col).get();
-            if (docSnap.exists && docSnap.data()?.items) {
-              this.cache[col] = docSnap.data().items;
-            } else {
-              // Seed initial data for this collection in Firestore
-              this.cache[col] = initialData[col] || [];
-              await firestoreDb.collection('app_data').doc(col).set({ items: this.cache[col] });
-            }
-          } catch (colErr) {
-            console.error(`Error loading Firestore collection ${col}:`, colErr.message);
-          }
-        }
-        this.isInitialized = true;
-        return;
-      }
-
-      // 3. Local JSON File Fallback
+      // 3. Fallback without Supabase
       if (!fs.existsSync(dataFilePath)) {
         this.save(initialData);
       } else {
-        const raw = fs.readFileSync(dataFilePath, 'utf8');
-        const data = JSON.parse(raw);
-        let modified = false;
-
-        for (const key of Object.keys(initialData)) {
-          if (!data[key]) {
-            data[key] = initialData[key];
-            modified = true;
-          }
+        if (!this.cache.organizations || this.cache.organizations.length === 0) {
+          this.cache.organizations = initialData.organizations;
         }
-
-        if (!data.organizations || !Array.isArray(data.organizations) || data.organizations.length === 0) {
-          data.organizations = initialData.organizations;
-          modified = true;
+        if (this.cache.audit_logs && this.cache.audit_logs.length > 2000) {
+          this.cache.audit_logs = this.cache.audit_logs.slice(-2000);
         }
-
-        this.cache = data;
-        if (modified) {
-          this.save(data);
-        }
+        this.save(this.cache);
       }
       this.isInitialized = true;
     } catch (err) {
-      console.error('Error during DB init, restoring initialData:', err);
-      this.cache = JSON.parse(JSON.stringify(initialData));
-      this.save(initialData);
+      console.error('Error during DB init:', err);
+      this.isInitialized = true;
     }
   }
 
   read() {
-    if (supabase || firestoreDb) {
-      return this.cache;
-    }
-    try {
-      if (!fs.existsSync(dataFilePath)) {
-        this.save(initialData);
-      }
-      const raw = fs.readFileSync(dataFilePath, 'utf8');
-      this.cache = JSON.parse(raw);
-      return this.cache;
-    } catch (err) {
-      console.error('Error reading database file:', err);
-      return this.cache || initialData;
-    }
+    return this.cache;
   }
 
   save(data) {
     this.cache = data;
+
+    // 1. ALWAYS write to local disk synchronously first
+    try {
+      fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (err) {
+      console.error('Error writing database file:', err);
+    }
+
+    // 2. Sync to Supabase
     if (supabase) {
       for (const [col, items] of Object.entries(data)) {
         supabase
@@ -228,26 +240,18 @@ class Database {
             console.error(`Supabase save error on ${col}:`, e.message);
           });
       }
-      return true;
     }
 
+    // 3. Sync to Firestore if enabled
     if (firestoreDb) {
-      // Asynchronously update all collections in Firestore
       for (const [col, items] of Object.entries(data)) {
         firestoreDb.collection('app_data').doc(col).set({ items }).catch(e => {
           console.error(`Firestore save error on ${col}:`, e.message);
         });
       }
-      return true;
     }
 
-    try {
-      fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2), 'utf8');
-      return true;
-    } catch (err) {
-      console.error('Error writing database file:', err);
-      return false;
-    }
+    return true;
   }
 
   getCollection(name) {
@@ -256,10 +260,16 @@ class Database {
   }
 
   saveCollection(name, items) {
-    const data = this.read();
-    data[name] = items;
     this.cache[name] = items;
 
+    // 1. ALWAYS write to local disk synchronously first
+    try {
+      fs.writeFileSync(dataFilePath, JSON.stringify(this.cache, null, 2), 'utf8');
+    } catch (err) {
+      console.error('Error writing database file:', err);
+    }
+
+    // 2. Sync to Supabase
     if (supabase) {
       supabase
         .from('app_collections')
@@ -275,17 +285,25 @@ class Database {
         .catch(e => {
           console.error(`Supabase saveCollection error on ${name}:`, e.message);
         });
-      return true;
     }
 
+    // 3. Sync to Firestore if enabled
     if (firestoreDb) {
       firestoreDb.collection('app_data').doc(name).set({ items }).catch(e => {
         console.error(`Firestore saveCollection error on ${name}:`, e.message);
       });
-      return true;
     }
 
-    return this.save(data);
+    return true;
+  }
+
+  clearEntireDatabase() {
+    console.log('🧹 Clearing entire database to fresh slate...');
+    const freshData = JSON.parse(JSON.stringify(initialData));
+    this.cache = freshData;
+    this.save(freshData);
+    console.log('✅ Database completely cleared and reset to fresh state.');
+    return true;
   }
 
   // --- Multi-Tenant Organization Scoped Helpers ---
@@ -430,6 +448,11 @@ class Database {
       },
       records: filtered
     };
+  }
+
+  // Supabase Client Getter for services & keep-alive ping
+  getSupabaseClient() {
+    return supabase;
   }
 }
 

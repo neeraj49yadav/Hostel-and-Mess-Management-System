@@ -519,4 +519,44 @@ class ApiService {
     final res = await _post('${ApiConstants.leaves}/$leaveId/return', {'adminName': adminName});
     return LeaveLog.fromJson(res['data']);
   }
+
+  // --- 8. Offline & Annual Backups Export ---
+  Future<String> downloadMasterDataCsv() async {
+    final base = await baseUrl;
+    final token = await authToken;
+    final url = Uri.parse('$base/export/master-data?format=csv');
+    final res = await http.get(url, headers: {
+      if (token != null) 'Authorization': 'Bearer $token',
+    });
+    if (res.statusCode == 200) {
+      return res.body;
+    }
+    throw Exception('Failed to download Master Data (${res.statusCode}): ${res.body}');
+  }
+
+  Future<String> downloadCashbookPnlCsv({int? year}) async {
+    final base = await baseUrl;
+    final token = await authToken;
+    final url = Uri.parse('$base/export/cashbook-pnl?format=csv${year != null ? '&year=$year' : ''}');
+    final res = await http.get(url, headers: {
+      if (token != null) 'Authorization': 'Bearer $token',
+    });
+    if (res.statusCode == 200) {
+      return res.body;
+    }
+    throw Exception('Failed to download Cashbook & P&L (${res.statusCode}): ${res.body}');
+  }
+
+  Future<String> downloadFullBackupJson() async {
+    final base = await baseUrl;
+    final token = await authToken;
+    final url = Uri.parse('$base/export/backup');
+    final res = await http.get(url, headers: {
+      if (token != null) 'Authorization': 'Bearer $token',
+    });
+    if (res.statusCode == 200) {
+      return res.body;
+    }
+    throw Exception('Failed to download Backup (${res.statusCode}): ${res.body}');
+  }
 }

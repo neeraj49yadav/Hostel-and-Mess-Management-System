@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { calculateCycleStatus, generateWhatsAppReminder } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
+const storageService = require('../services/storageService');
 
 // Get all mess members (Hostelites enrolled in mess + Outside Day Scholars)
 exports.getMessMembers = (req, res) => {
@@ -68,7 +69,7 @@ exports.getMessMembers = (req, res) => {
 };
 
 // Add Member to Mess: Handles both (1) Existing Hostel Resident and (2) Outside Student
-exports.createMessMember = (req, res) => {
+exports.createMessMember = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const {
@@ -95,6 +96,9 @@ exports.createMessMember = (req, res) => {
     messExp.setMonth(messExp.getMonth() + 1);
     const messExpiryDateStr = messExp.toISOString().split('T')[0];
 
+    // ☁️ Offload photo to Supabase Storage if Base64
+    const storedPhotoUrl = await storageService.processImage(photoUrl, 'members');
+
     // CASE A: Enrolling an existing Hostel Resident
     if (isHostelResident === true && studentId) {
       const index = students.findIndex(s => s.id === studentId);
@@ -104,8 +108,8 @@ exports.createMessMember = (req, res) => {
 
       students[index].enrolledInMess = true;
       students[index].monthlyMessFee = fee;
-      if (photoUrl && photoUrl.trim()) {
-        students[index].photoUrl = photoUrl.trim();
+      if (storedPhotoUrl && storedPhotoUrl.trim()) {
+        students[index].photoUrl = storedPhotoUrl.trim();
       }
       if (!students[index].messExpiryDate || students[index].messExpiryDate === '') {
         students[index].messExpiryDate = messExpiryDateStr;
@@ -148,7 +152,7 @@ exports.createMessMember = (req, res) => {
       phone: phone.trim(),
       parentPhone: (parentPhone || '').trim(),
       parentName: (parentName || '').trim(),
-      photoUrl: (photoUrl || '').trim(),
+      photoUrl: (storedPhotoUrl || '').trim(),
       roomId: null,
       roomNumber: 'External / Day Scholar',
       bedNo: '-',

@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { generateToken, extractOrgId } = require('../middleware/authMiddleware');
 const { logAudit } = require('../services/auditService');
+const storageService = require('../services/storageService');
 
 // Get all active organizations for switcher / discovery
 exports.getOrganizations = (req, res) => {
@@ -168,6 +169,14 @@ exports.verifyPin = (req, res) => {
       targetOrg = organizations.find(o => (o.code || '').toUpperCase() === searchOrgCode);
     }
 
+    // 🚫 If an Organization Code or ID was specified but does not exist, REJECT! Do NOT auto-connect or fall back.
+    if ((searchOrgId || searchOrgCode) && !targetOrg) {
+      return res.status(404).json({
+        success: false,
+        message: `Organization with code "${searchOrgCode || searchOrgId}" not found. Please check your Organization Code or register your hostel first.`
+      });
+    }
+
     let matchedAdmin = null;
 
     if (targetOrg) {
@@ -180,7 +189,7 @@ exports.verifyPin = (req, res) => {
         matchedAdmin = matchingAdmins[0];
         targetOrg = organizations.find(o => o.id === (matchedAdmin.orgId || 'org-default'));
       } else if (matchingAdmins.length > 1) {
-        // Multiple admins have same PIN across different orgs - pick the first or default
+        // Multiple admins have same PIN across different orgs - pick the first
         matchedAdmin = matchingAdmins[0];
         targetOrg = organizations.find(o => o.id === (matchedAdmin.orgId || 'org-default'));
       }
@@ -393,7 +402,7 @@ exports.updatePin = (req, res) => {
 };
 
 // Add New Staff / User to Organization (Org Admin decides initial PIN)
-exports.addUser = (req, res) => {
+exports.addUser = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { name, role, phone, pin, profilePhoto } = req.body;
@@ -413,6 +422,9 @@ exports.addUser = (req, res) => {
       return res.status(400).json({ success: false, message: `A user with phone "${phone}" already exists in this organization` });
     }
 
+    // ☁️ Offload photo to Supabase Storage
+    const storedPhotoUrl = await storageService.processImage(profilePhoto, 'admins');
+
     const newAdmin = {
       id: `admin-${uuidv4().substring(0, 8)}`,
       orgId: orgId,
@@ -420,7 +432,7 @@ exports.addUser = (req, res) => {
       role: (role || 'Staff / Warden').trim(),
       phone: (phone || '').trim(),
       pin: pin.toString().trim(),
-      profilePhoto: (profilePhoto || '').trim(),
+      profilePhoto: storedPhotoUrl || '',
       createdAt: new Date().toISOString()
     };
 
@@ -448,7 +460,7 @@ exports.addUser = (req, res) => {
 };
 
 // Update Staff / User Details
-exports.updateUser = (req, res) => {
+exports.updateUser = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { id } = req.params;
@@ -464,7 +476,9 @@ exports.updateUser = (req, res) => {
     if (name) admins[index].name = name.trim();
     if (role) admins[index].role = role.trim();
     if (phone !== undefined) admins[index].phone = phone.trim();
-    if (profilePhoto !== undefined) admins[index].profilePhoto = profilePhoto.trim();
+    if (profilePhoto !== undefined) {
+      admins[index].profilePhoto = await storageService.processImage(profilePhoto, 'admins');
+    }
 
     db.saveCollection('admins', admins);
 
@@ -565,7 +579,7 @@ exports.resetUserPin = (req, res) => {
 };
 
 // Update Logged-in User's Profile
-exports.updateProfile = (req, res) => {
+exports.updateProfile = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const adminId = req.admin ? req.admin.id : req.body.adminId;
@@ -584,7 +598,9 @@ exports.updateProfile = (req, res) => {
 
     if (name) admins[index].name = name.trim();
     if (phone !== undefined) admins[index].phone = phone.trim();
-    if (profilePhoto !== undefined) admins[index].profilePhoto = profilePhoto.trim();
+    if (profilePhoto !== undefined) {
+      admins[index].profilePhoto = await storageService.processImage(profilePhoto, 'admins');
+    }
 
     db.saveCollection('admins', admins);
 

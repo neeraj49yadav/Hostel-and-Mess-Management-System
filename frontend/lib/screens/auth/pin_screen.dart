@@ -508,24 +508,38 @@ class _PinScreenState extends State<PinScreen> {
                   );
                   return;
                 }
+
+                // 1. Fetch the latest registered organizations from backend
+                await auth.loadOrganizations();
                 final orgs = auth.availableOrganizations;
-                final matched = orgs.firstWhere(
-                  (o) => o.code.toUpperCase() == code,
-                  orElse: () => Organization(
-                    id: 'org-$code',
-                    name: 'Hostel ($code)',
-                    code: code,
-                    city: 'Joined',
-                    contactPhone: '',
-                  ),
+
+                // 2. Check if this organization code is registered
+                final matchedIndex = orgs.indexWhere(
+                  (o) => o.code.trim().toUpperCase() == code,
                 );
-                final messenger = ScaffoldMessenger.of(context);
+
+                if (matchedIndex == -1) {
+                  // 🚫 NOT REGISTERED -> Display error message and DO NOT create or connect
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('❌ Organization with code "$code" not found. Please check the code or register your hostel first.'),
+                        backgroundColor: AppColors.danger,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                  return;
+                }
+
+                // 3. Registered Organization found -> Connect safely
+                final matched = orgs[matchedIndex];
                 await auth.selectOrganization(matched);
                 if (mounted) {
                   if (ctx.mounted) Navigator.pop(ctx);
-                  messenger.showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Connected to Organization Code: $code'),
+                      content: Text('Connected to: ${matched.name} (${matched.code})'),
                       backgroundColor: AppColors.success,
                     ),
                   );

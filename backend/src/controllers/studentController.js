@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { calculateCycleStatus, generateWhatsAppReminder } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
+const storageService = require('../services/storageService');
 
 // Enrich student with distinct Mess & Rent statuses and payment balances
 function enrichStudent(student, preloadedPayments) {
@@ -193,7 +194,7 @@ exports.getStudentById = (req, res) => {
 };
 
 // Register new student
-exports.createStudent = (req, res) => {
+exports.createStudent = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const {
@@ -245,12 +246,15 @@ exports.createStudent = (req, res) => {
 
     const agreedRent = totalRentAgreed !== undefined ? parseFloat(totalRentAgreed) : (parseFloat(rentAmountPerTerm) || 27000);
 
+    // ☁️ Offload photo to Supabase Storage (prevents Base64 database bloat)
+    const storedPhotoUrl = await storageService.processImage(photoUrl, 'students');
+
     const newStudent = {
       id: `stud-${uuidv4().substring(0, 8)}`,
       orgId: orgId,
       memberType: 'HOSTEL_RESIDENT',
       enrolledInMess: enrolledInMess !== false,
-      photoUrl: (photoUrl || '').trim(),
+      photoUrl: storedPhotoUrl || '',
       name: name.trim(),
       phone: phone.trim(),
       parentPhone: (parentPhone || '').trim(),
@@ -296,8 +300,8 @@ exports.createStudent = (req, res) => {
   }
 };
 
-// Update student profile
-exports.updateStudent = (req, res) => {
+// Update existing student details
+exports.updateStudent = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { id } = req.params;
@@ -329,13 +333,19 @@ exports.updateStudent = (req, res) => {
       ? parseFloat(totalRentAgreed)
       : (rentAmountPerTerm !== undefined ? parseFloat(rentAmountPerTerm) : students[index].totalRentAgreed);
 
+    // ☁️ Offload updated photo to Supabase Storage if Base64
+    let storedPhotoUrl = students[index].photoUrl || '';
+    if (photoUrl !== undefined) {
+      storedPhotoUrl = await storageService.processImage(photoUrl, 'students');
+    }
+
     students[index] = {
       ...students[index],
       name: name !== undefined ? name.trim() : students[index].name,
       phone: phone !== undefined ? phone.trim() : students[index].phone,
       parentPhone: parentPhone !== undefined ? parentPhone.trim() : students[index].parentPhone,
       parentName: parentName !== undefined ? parentName.trim() : students[index].parentName,
-      photoUrl: photoUrl !== undefined ? photoUrl.trim() : (students[index].photoUrl || ''),
+      photoUrl: storedPhotoUrl,
       enrolledInMess: enrolledInMess !== undefined ? enrolledInMess : students[index].enrolledInMess,
       monthlyMessFee: monthlyMessFee !== undefined ? parseFloat(monthlyMessFee) : students[index].monthlyMessFee,
       messExpiryDate: messExpiryDate !== undefined ? messExpiryDate : students[index].messExpiryDate,
