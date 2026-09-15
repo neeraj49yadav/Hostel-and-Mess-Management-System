@@ -902,19 +902,19 @@ class _PinScreenState extends State<PinScreen> {
       ),
       body: Stack(
         children: [
-          // 🌊 App Logo Background Watermark (Full Uncropped Emblem with Outer Rings)
+          // 🌊 App Logo Background Watermark (Edge-to-Edge Bezel Touching Outer Rings)
           Positioned.fill(
             child: IgnorePointer(
               child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                  child: AspectRatio(
-                    aspectRatio: 1.0,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Transform.scale(
+                    scale: 1.15,
                     child: Opacity(
                       opacity: isDark ? 0.12 : 0.08,
                       child: Image.asset(
                         'assets/images/app_logo.jpg',
-                        fit: BoxFit.contain,
+                        fit: BoxFit.fitWidth,
                         alignment: Alignment.center,
                         errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                       ),
