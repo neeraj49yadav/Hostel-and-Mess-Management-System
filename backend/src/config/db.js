@@ -54,45 +54,8 @@ if (!fs.existsSync(dataDir)) {
 
 // Initial clean seed data structure for daily production use
 const initialData = {
-  organizations: [
-    {
-      id: 'org-default',
-      name: 'My Hostel & Mess',
-      code: 'HOSTEL',
-      city: 'Main Campus',
-      contactPhone: '',
-      createdAt: '2026-01-01T00:00:00.000Z'
-    }
-  ],
-  admins: [
-    {
-      id: 'admin-1',
-      orgId: 'org-default',
-      name: 'Chief Warden (Admin 1)',
-      role: 'Chief Warden',
-      phone: '9876543210',
-      pin: '1111',
-      createdAt: '2026-01-01T00:00:00.000Z'
-    },
-    {
-      id: 'admin-2',
-      orgId: 'org-default',
-      name: 'Hostel In-charge (Admin 2)',
-      role: 'Hostel In-charge',
-      phone: '9876543211',
-      pin: '2222',
-      createdAt: '2026-01-01T00:00:00.000Z'
-    },
-    {
-      id: 'admin-3',
-      orgId: 'org-default',
-      name: 'Mess In-charge (Admin 3)',
-      role: 'Mess In-charge',
-      phone: '9876543212',
-      pin: '3333',
-      createdAt: '2026-01-01T00:00:00.000Z'
-    }
-  ],
+  organizations: [],
+  admins: [],
   rooms: [],
   students: [],
   payments: [],
@@ -151,7 +114,7 @@ class Database {
                 localOrgs.forEach(o => o && o.id && orgMap.set(o.id, o));
                 remoteOrgs.forEach(o => o && o.id && orgMap.set(o.id, o));
                 const mergedOrgs = Array.from(orgMap.values());
-                this.cache.organizations = mergedOrgs.length > 0 ? mergedOrgs : initialData.organizations;
+                this.cache.organizations = mergedOrgs;
               } else if (col === 'admins') {
                 // Merge admins by ID
                 const localAdmins = Array.isArray(this.cache.admins) ? this.cache.admins : [];
@@ -160,7 +123,7 @@ class Database {
                 localAdmins.forEach(a => a && a.id && adminMap.set(a.id, a));
                 remoteAdmins.forEach(a => a && a.id && adminMap.set(a.id, a));
                 const mergedAdmins = Array.from(adminMap.values());
-                this.cache.admins = mergedAdmins.length > 0 ? mergedAdmins : initialData.admins;
+                this.cache.admins = mergedAdmins;
               } else {
                 if (data.items.length > 0 || !this.cache[col] || this.cache[col].length === 0) {
                   this.cache[col] = data.items;
@@ -200,9 +163,6 @@ class Database {
       if (!fs.existsSync(dataFilePath)) {
         this.save(initialData);
       } else {
-        if (!this.cache.organizations || this.cache.organizations.length === 0) {
-          this.cache.organizations = initialData.organizations;
-        }
         if (this.cache.audit_logs && this.cache.audit_logs.length > 2000) {
           this.cache.audit_logs = this.cache.audit_logs.slice(-2000);
         }

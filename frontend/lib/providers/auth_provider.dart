@@ -387,6 +387,8 @@ class AuthProvider with ChangeNotifier {
         );
       } else if (_availableOrganizations.isNotEmpty) {
         _currentOrganization = _availableOrganizations.first;
+      } else {
+        _currentOrganization = null;
       }
       notifyListeners();
     } catch (_) {
