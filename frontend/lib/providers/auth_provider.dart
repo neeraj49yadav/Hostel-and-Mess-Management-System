@@ -38,6 +38,12 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  // Lock the current session and prompt for 4-digit PIN
+  void lockSession() {
+    _isAuthenticated = false;
+    notifyListeners();
+  }
+
   AuthProvider({
     bool initialIsAuthenticated = false,
     AdminUser? initialAdmin,
@@ -49,18 +55,26 @@ class AuthProvider with ChangeNotifier {
       if (initialOrg != null) {
         _currentOrganization = initialOrg;
       }
+    } else {
+      _isAuthenticated = false;
+      if (initialAdmin != null) {
+        _currentAdmin = initialAdmin;
+      }
+      if (initialOrg != null) {
+        _currentOrganization = initialOrg;
+      }
     }
-    _initOrganizationAndAdmins();
+    _initOrganizationAndAdmins(allowAutoAuth: initialIsAuthenticated);
   }
 
-  Future<void> _initOrganizationAndAdmins() async {
-    await _restoreSavedSession();
+  Future<void> _initOrganizationAndAdmins({bool allowAutoAuth = false}) async {
+    await _restoreSavedSession(allowAutoAuth: allowAutoAuth);
     await loadOrganizations();
     await _loadAvailableAdmins();
     await loadNotifications();
   }
 
-  Future<void> _restoreSavedSession() async {
+  Future<void> _restoreSavedSession({bool allowAutoAuth = false}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_jwt_token');
@@ -93,8 +107,26 @@ class AuthProvider with ChangeNotifier {
           logo: prefs.getString('selected_org_logo'),
         );
 
-        _isAuthenticated = true;
+        // 🔒 Security: Only auto-authenticate if explicitly allowed (e.g. active camera recovery)
+        if (allowAutoAuth) {
+          _isAuthenticated = true;
+        } else {
+          _isAuthenticated = false;
+        }
         notifyListeners();
+      } else {
+        final savedOrgId = prefs.getString('selected_org_id');
+        if (savedOrgId != null) {
+          _currentOrganization ??= Organization(
+            id: savedOrgId,
+            name: prefs.getString('selected_org_name') ?? 'My Hostel & Mess',
+            code: prefs.getString('selected_org_code') ?? 'HOSTEL',
+            city: prefs.getString('selected_org_city') ?? '',
+            contactPhone: prefs.getString('selected_org_phone') ?? '',
+            logo: prefs.getString('selected_org_logo'),
+          );
+          notifyListeners();
+        }
       }
     } catch (e) {
       debugPrint('[AuthProvider] Error restoring session: $e');
