@@ -442,10 +442,10 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> deletePayment(String paymentId, {String? reason, String? adminName}) async {
-    return await _delete('${ApiConstants.payments}/$paymentId', body: {
-      ?'reason': reason,
-      ?'adminName': adminName,
-    });
+    final body = <String, dynamic>{};
+    if (reason != null && reason.isNotEmpty) body['reason'] = reason;
+    if (adminName != null && adminName.isNotEmpty) body['adminName'] = adminName;
+    return await _delete('${ApiConstants.payments}/$paymentId', body: body);
   }
 
   // --- 6. Mess Members & Expenses ---

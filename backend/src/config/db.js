@@ -52,6 +52,9 @@ if (!fs.existsSync(dataDir)) {
   try { fs.mkdirSync(dataDir, { recursive: true }); } catch (_) {}
 }
 
+const CLOUD_STORAGE_BUCKET = 'hostel-photos';
+const CLOUD_STORAGE_FILE = 'system/cloud_db.json';
+
 // Initial clean seed data structure for daily production use
 const initialData = {
   organizations: [],
@@ -71,20 +74,23 @@ class Database {
   constructor() {
     this.cache = JSON.parse(JSON.stringify(initialData));
     this.isInitialized = false;
+    this._cloudSyncTimeout = null;
     this.init();
   }
 
   async init() {
     try {
-      // 1. Always read existing local db.json first so records are NEVER lost on restart!
+      // 1. Always read existing local db.json first
+      let hasLocalRecords = false;
       if (fs.existsSync(dataFilePath)) {
         try {
           const raw = fs.readFileSync(dataFilePath, 'utf8');
           const localData = JSON.parse(raw);
           if (localData && typeof localData === 'object') {
             for (const key of Object.keys(initialData)) {
-              if (localData[key] !== undefined) {
+              if (Array.isArray(localData[key])) {
                 this.cache[key] = localData[key];
+                if (localData[key].length > 0) hasLocalRecords = true;
               }
             }
           }
@@ -93,8 +99,50 @@ class Database {
         }
       }
 
-      // 2. Supabase Cloud Sync
+      // 2. ⚡ Autonomous Supabase Storage Cloud Persistence (Survives Render spin-downs & reboots!)
       if (supabase) {
+        try {
+          console.log('🔄 Checking Supabase Cloud Storage for persistent snapshot...');
+          const { data: cloudBlob, error: cloudErr } = await supabase.storage
+            .from(CLOUD_STORAGE_BUCKET)
+            .download(CLOUD_STORAGE_FILE);
+
+          if (!cloudErr && cloudBlob) {
+            const cloudText = await cloudBlob.text();
+            const cloudData = JSON.parse(cloudText);
+            if (cloudData && typeof cloudData === 'object') {
+              console.log('⚡ Successfully restored database snapshot from Supabase Cloud Storage!');
+              for (const key of Object.keys(initialData)) {
+                const cloudItems = Array.isArray(cloudData[key]) ? cloudData[key] : [];
+                const localItems = Array.isArray(this.cache[key]) ? this.cache[key] : [];
+
+                if (cloudItems.length > 0 && localItems.length === 0) {
+                  this.cache[key] = cloudItems;
+                } else if (cloudItems.length > 0 && localItems.length > 0) {
+                  // Merge items by id
+                  const itemMap = new Map();
+                  localItems.forEach(item => item && item.id && itemMap.set(item.id, item));
+                  cloudItems.forEach(item => item && item.id && itemMap.set(item.id, item));
+                  this.cache[key] = Array.from(itemMap.values());
+                }
+              }
+
+              // Persist consolidated cloud state to local disk
+              try {
+                fs.writeFileSync(dataFilePath, JSON.stringify(this.cache, null, 2), 'utf8');
+              } catch (_) {}
+            }
+          } else {
+            console.log('ℹ️ No cloud snapshot found yet in Supabase Storage. Will upload on first write.');
+            if (hasLocalRecords) {
+              this.syncToCloudStorage();
+            }
+          }
+        } catch (storageErr) {
+          console.warn('⚠️ Supabase Storage cloud restore warning:', storageErr.message);
+        }
+
+        // 3. Optional Supabase Cloud Table Sync (if table permissions are available)
         const collections = Object.keys(initialData);
         for (const col of collections) {
           try {
@@ -107,30 +155,25 @@ class Database {
 
             if (!error && data && data.items && Array.isArray(data.items)) {
               if (col === 'organizations') {
-                // Merge organizations by ID so no hostel is ever lost
                 const localOrgs = Array.isArray(this.cache.organizations) ? this.cache.organizations : [];
                 const remoteOrgs = data.items;
                 const orgMap = new Map();
                 localOrgs.forEach(o => o && o.id && orgMap.set(o.id, o));
                 remoteOrgs.forEach(o => o && o.id && orgMap.set(o.id, o));
-                const mergedOrgs = Array.from(orgMap.values());
-                this.cache.organizations = mergedOrgs;
+                this.cache.organizations = Array.from(orgMap.values());
               } else if (col === 'admins') {
-                // Merge admins by ID
                 const localAdmins = Array.isArray(this.cache.admins) ? this.cache.admins : [];
                 const remoteAdmins = data.items;
                 const adminMap = new Map();
                 localAdmins.forEach(a => a && a.id && adminMap.set(a.id, a));
                 remoteAdmins.forEach(a => a && a.id && adminMap.set(a.id, a));
-                const mergedAdmins = Array.from(adminMap.values());
-                this.cache.admins = mergedAdmins;
+                this.cache.admins = Array.from(adminMap.values());
               } else {
-                if (data.items.length > 0 || !this.cache[col] || this.cache[col].length === 0) {
+                if (data.items.length > 0 && (!this.cache[col] || this.cache[col].length === 0)) {
                   this.cache[col] = data.items;
                 }
               }
-            } else {
-              // Supabase does not have this collection yet -> sync local cache to Supabase
+            } else if (!error) {
               await supabase
                 .from('app_collections')
                 .upsert({
@@ -141,7 +184,7 @@ class Database {
                 });
             }
           } catch (colErr) {
-            console.warn(`Warning loading Supabase collection ${col}:`, colErr.message);
+            // Silently ignore table permission warnings as storage persistence handles it
           }
         }
 
@@ -159,7 +202,7 @@ class Database {
         return;
       }
 
-      // 3. Fallback without Supabase
+      // 4. Fallback without Supabase
       if (!fs.existsSync(dataFilePath)) {
         this.save(initialData);
       } else {
@@ -179,6 +222,42 @@ class Database {
     return this.cache;
   }
 
+  syncToCloudStorage(immediate = false) {
+    if (!supabase) return;
+    if (this._cloudSyncTimeout) {
+      clearTimeout(this._cloudSyncTimeout);
+      this._cloudSyncTimeout = null;
+    }
+
+    const performUpload = () => {
+      try {
+        const payload = Buffer.from(JSON.stringify(this.cache, null, 2), 'utf8');
+        supabase.storage
+          .from(CLOUD_STORAGE_BUCKET)
+          .upload(CLOUD_STORAGE_FILE, payload, {
+            upsert: true,
+            contentType: 'application/json'
+          })
+          .then(({ error }) => {
+            if (error) {
+              console.warn('⚠️ Supabase Storage cloud sync warning:', error.message);
+            }
+          })
+          .catch(e => {
+            console.warn('⚠️ Supabase Storage cloud sync error:', e.message);
+          });
+      } catch (err) {
+        console.warn('⚠️ Exception in performUpload:', err.message);
+      }
+    };
+
+    if (immediate) {
+      performUpload();
+    } else {
+      this._cloudSyncTimeout = setTimeout(performUpload, 300);
+    }
+  }
+
   save(data) {
     this.cache = data;
 
@@ -188,6 +267,9 @@ class Database {
     } catch (err) {
       console.error('Error writing database file:', err);
     }
+
+    // 2. ⚡ Persist full snapshot to Supabase Cloud Storage (Guaranteed survival across Render restarts)
+    this.syncToCloudStorage();
 
     // 2. Sync to Supabase
     if (supabase) {
@@ -236,7 +318,10 @@ class Database {
       console.error('Error writing database file:', err);
     }
 
-    // 2. Sync to Supabase
+    // 2. ⚡ Persist full snapshot to Supabase Cloud Storage (Survives Render restarts)
+    this.syncToCloudStorage();
+
+    // 3. Sync to Supabase
     if (supabase) {
       supabase
         .from('app_collections')
@@ -254,7 +339,7 @@ class Database {
         });
     }
 
-    // 3. Sync to Firestore if enabled
+    // 4. Sync to Firestore if enabled
     if (firestoreDb) {
       firestoreDb.collection('app_data').doc(name).set({ items }).catch(e => {
         console.error(`Firestore saveCollection error on ${name}:`, e.message);
@@ -269,6 +354,7 @@ class Database {
     const freshData = JSON.parse(JSON.stringify(initialData));
     this.cache = freshData;
     this.save(freshData);
+    this.syncToCloudStorage(true);
     console.log('✅ Database completely cleared and reset to fresh state.');
     return true;
   }

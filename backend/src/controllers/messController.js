@@ -12,20 +12,23 @@ exports.getMessMembers = (req, res) => {
     const { type, status, search } = req.query; // type: 'ALL', 'OUTSIDE_ONLY', 'HOSTEL_ONLY'
     const allStudents = db.getCollectionForOrg('students', orgId).filter(s => s.status !== 'ARCHIVED');
 
+    const isOutsider = s => s.memberType === 'MESS_ONLY' || s.isMessOnly === true || !s.roomId;
+    const isHostelite = s => (s.memberType === 'HOSTEL_RESIDENT' || !!s.roomId) && s.enrolledInMess !== false;
+
     // Filter to only students who are enrolled in mess or are mess-only
-    const messStudents = allStudents.filter(s => s.memberType === 'MESS_ONLY' || s.enrolledInMess !== false);
+    const messStudents = allStudents.filter(s => isOutsider(s) || isHostelite(s));
 
     // True total counts computed before filter is applied
     const totalAllCount = messStudents.length;
-    const totalOutsideCount = messStudents.filter(s => s.memberType === 'MESS_ONLY').length;
-    const totalHostelCount = messStudents.filter(s => s.memberType === 'HOSTEL_RESIDENT').length;
+    const totalOutsideCount = messStudents.filter(isOutsider).length;
+    const totalHostelCount = messStudents.filter(s => !isOutsider(s)).length;
 
     let filtered = [...messStudents];
 
     if (type === 'OUTSIDE_ONLY') {
-      filtered = filtered.filter(s => s.memberType === 'MESS_ONLY');
+      filtered = filtered.filter(isOutsider);
     } else if (type === 'HOSTEL_ONLY') {
-      filtered = filtered.filter(s => s.memberType === 'HOSTEL_RESIDENT');
+      filtered = filtered.filter(s => !isOutsider(s));
     }
 
     // Status filter
@@ -61,8 +64,11 @@ exports.getMessMembers = (req, res) => {
       success: true,
       count: enriched.length,
       totalCount: totalAllCount,
+      totalAllCount: totalAllCount,
       outsideCount: totalOutsideCount,
+      totalOutsideCount: totalOutsideCount,
       hostelCount: totalHostelCount,
+      totalHostelCount: totalHostelCount,
       data: enriched
     });
   } catch (err) {

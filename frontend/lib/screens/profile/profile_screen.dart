@@ -1003,12 +1003,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: const Icon(Icons.camera_alt_rounded, color: AppColors.primary),
                   title: const Text('Take Photo with Camera'),
                   onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     Navigator.pop(ctx);
                     final b64 = await _pickBase64Image(ImageSource.camera);
                     if (b64 != null && mounted) {
                       final ok = await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: b64);
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(ok ? '✅ Profile photo updated successfully!' : (auth.errorMessage ?? 'Failed to update photo')),
                             backgroundColor: ok ? AppColors.success : AppColors.danger,
@@ -1022,12 +1023,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: const Icon(Icons.photo_library_rounded, color: AppColors.accent),
                   title: const Text('Choose from Gallery'),
                   onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     Navigator.pop(ctx);
                     final b64 = await _pickBase64Image(ImageSource.gallery);
                     if (b64 != null && mounted) {
                       final ok = await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: b64);
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(ok ? '✅ Profile photo updated successfully!' : (auth.errorMessage ?? 'Failed to update photo')),
                             backgroundColor: ok ? AppColors.success : AppColors.danger,
@@ -1042,10 +1044,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
                     title: const Text('Remove Photo', style: TextStyle(color: AppColors.danger)),
                     onTap: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       Navigator.pop(ctx);
                       final ok = await auth.updateProfile(name: admin.name, phone: admin.phone, profilePhoto: '');
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(ok ? 'Profile photo removed' : 'Failed to remove photo'),
                             backgroundColor: ok ? AppColors.info : AppColors.danger,

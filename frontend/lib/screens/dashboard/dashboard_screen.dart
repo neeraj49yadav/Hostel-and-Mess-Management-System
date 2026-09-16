@@ -274,7 +274,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
               Text(
-                '6 Shortcuts',
+                '7 Shortcuts',
                 style: TextStyle(
                   fontSize: 12,
                   color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,

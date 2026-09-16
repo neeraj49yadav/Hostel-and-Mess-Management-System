@@ -52,9 +52,14 @@ class MessProvider with ChangeNotifier {
 
       final rawList = res['data'] as List? ?? [];
       _messMembers = rawList.map((s) => Student.fromJson(s as Map<String, dynamic>)).toList();
-      _totalAllCount = (res['totalAllCount'] as num?)?.toInt() ?? _messMembers.length;
-      _totalOutsideCount = (res['totalOutsideCount'] as num?)?.toInt() ?? 0;
-      _totalHostelCount = (res['totalHostelCount'] as num?)?.toInt() ?? 0;
+
+      final serverAll = (res['totalAllCount'] ?? res['totalCount'] ?? res['count'] as num?)?.toInt();
+      final serverOutside = (res['totalOutsideCount'] ?? res['outsideCount'] as num?)?.toInt();
+      final serverHostel = (res['totalHostelCount'] ?? res['hostelCount'] as num?)?.toInt();
+
+      _totalAllCount = serverAll ?? _messMembers.length;
+      _totalOutsideCount = serverOutside ?? _messMembers.where((m) => m.isMessOnly).length;
+      _totalHostelCount = serverHostel ?? _messMembers.where((m) => !m.isMessOnly).length;
 
       _isLoading = false;
       notifyListeners();
