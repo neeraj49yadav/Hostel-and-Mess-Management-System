@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { calculateCycleStatus, generateWhatsAppReminder } = require('../services/expiryService');
+const { calculateCycleStatus, calculateElapsedMessCycles, calculateMessExpiryDate, generateWhatsAppReminder } = require('../services/expiryService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 
 exports.getDashboardStats = (req, res) => {
@@ -25,14 +25,48 @@ exports.getDashboardStats = (req, res) => {
     const rentOverdue = [];
 
     students.forEach(student => {
-      const messStatus = calculateCycleStatus(student.messExpiryDate, 5);
-
       const studentPayments = payments.filter(p => p.studentId === student.id);
       const totalRentAgreed = parseFloat(student.totalRentAgreed !== undefined ? student.totalRentAgreed : (student.rentAmountPerTerm || 0));
       const totalRentPaid = studentPayments
         .filter(p => p.feeType === 'RENT' || (p.feeType === 'BOTH' && p.rentAmount > 0))
         .reduce((sum, p) => sum + (parseFloat(p.rentAmount) || (p.feeType === 'RENT' ? parseFloat(p.amount) : 0)), 0);
       const rentBalanceDue = Math.max(0, totalRentAgreed - totalRentPaid);
+
+      const totalMessPaid = studentPayments
+        .filter(p => p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0))
+        .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
+
+      const monthlyMessFee = parseFloat(student.monthlyMessFee) || 3500;
+      let messBalanceDue = 0;
+      let computedMessExpiry = student.messExpiryDate;
+      const messStartDate = student.messStartDate || (student.enrolledInMess ? (student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0]) : null);
+
+      if (student.enrolledInMess && messStartDate) {
+        computedMessExpiry = calculateMessExpiryDate(messStartDate, totalMessPaid, monthlyMessFee);
+        const elapsedCycles = calculateElapsedMessCycles(messStartDate);
+        const totalMessBilled = elapsedCycles * monthlyMessFee;
+        messBalanceDue = Math.max(0, totalMessBilled - totalMessPaid);
+      }
+
+      const messCycleStatus = calculateCycleStatus(computedMessExpiry, 5);
+      let messDynamicStatus = 'ACTIVE';
+      let messStatusLabel = '';
+
+      if (!student.enrolledInMess) {
+        messDynamicStatus = 'ACTIVE';
+        messStatusLabel = 'Not Enrolled';
+      } else if (messBalanceDue > 0) {
+        if (messCycleStatus.status === 'EXPIRED') {
+          messDynamicStatus = 'EXPIRED';
+          messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Overdue)`;
+        } else {
+          messDynamicStatus = 'EXPIRING_SOON';
+          messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Month Due)`;
+        }
+      } else {
+        messDynamicStatus = messCycleStatus.status;
+        messStatusLabel = messCycleStatus.label;
+      }
 
       let rentDynamicStatus = 'ACTIVE';
       let rentStatusLabel = '';
@@ -59,13 +93,18 @@ exports.getDashboardStats = (req, res) => {
       const enriched = {
         ...student,
         orgId,
+        admissionDate: student.admissionDate || '',
+        messStartDate: messStartDate,
+        messExpiryDate: computedMessExpiry,
         totalRentAgreed,
         totalRentPaid,
         rentBalanceDue,
+        totalMessPaid,
+        messBalanceDue,
 
-        messDynamicStatus: student.enrolledInMess ? messStatus.status : 'ACTIVE',
-        messStatusLabel: student.enrolledInMess ? messStatus.label : 'Not Enrolled',
-        messDaysRemaining: student.enrolledInMess ? messStatus.daysDiff : 999,
+        messDynamicStatus,
+        messStatusLabel,
+        messDaysRemaining: student.enrolledInMess ? messCycleStatus.daysDiff : 999,
 
         rentDynamicStatus,
         rentStatusLabel,
@@ -73,6 +112,9 @@ exports.getDashboardStats = (req, res) => {
 
         whatsappReminder: generateWhatsAppReminder({
           ...student,
+          messStartDate,
+          messExpiryDate: computedMessExpiry,
+          messBalanceDue,
           totalRentAgreed,
           totalRentPaid,
           rentBalanceDue
@@ -80,8 +122,8 @@ exports.getDashboardStats = (req, res) => {
       };
 
       if (student.enrolledInMess) {
-        if (messStatus.status === 'EXPIRING_SOON') messExpiringSoon.push(enriched);
-        if (messStatus.status === 'EXPIRED') messOverdue.push(enriched);
+        if (messDynamicStatus === 'EXPIRING_SOON') messExpiringSoon.push(enriched);
+        if (messDynamicStatus === 'EXPIRED') messOverdue.push(enriched);
       }
 
       if (student.memberType === 'HOSTEL_RESIDENT') {
@@ -165,14 +207,48 @@ exports.getDuesAndExpiries = (req, res) => {
     const payments = db.getCollectionForOrg('payments', orgId);
 
     students.forEach(student => {
-      const messStatus = calculateCycleStatus(student.messExpiryDate, 5);
-
       const studentPayments = payments.filter(p => p.studentId === student.id);
       const totalRentAgreed = parseFloat(student.totalRentAgreed !== undefined ? student.totalRentAgreed : (student.rentAmountPerTerm || 0));
       const totalRentPaid = studentPayments
         .filter(p => p.feeType === 'RENT' || (p.feeType === 'BOTH' && p.rentAmount > 0))
         .reduce((sum, p) => sum + (parseFloat(p.rentAmount) || (p.feeType === 'RENT' ? parseFloat(p.amount) : 0)), 0);
       const rentBalanceDue = Math.max(0, totalRentAgreed - totalRentPaid);
+
+      const totalMessPaid = studentPayments
+        .filter(p => p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0))
+        .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
+
+      const monthlyMessFee = parseFloat(student.monthlyMessFee) || 3500;
+      let messBalanceDue = 0;
+      let computedMessExpiry = student.messExpiryDate;
+      const messStartDate = student.messStartDate || (student.enrolledInMess ? (student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0]) : null);
+
+      if (student.enrolledInMess && messStartDate) {
+        computedMessExpiry = calculateMessExpiryDate(messStartDate, totalMessPaid, monthlyMessFee);
+        const elapsedCycles = calculateElapsedMessCycles(messStartDate);
+        const totalMessBilled = elapsedCycles * monthlyMessFee;
+        messBalanceDue = Math.max(0, totalMessBilled - totalMessPaid);
+      }
+
+      const messCycleStatus = calculateCycleStatus(computedMessExpiry, 5);
+      let messDynamicStatus = 'ACTIVE';
+      let messStatusLabel = '';
+
+      if (!student.enrolledInMess) {
+        messDynamicStatus = 'ACTIVE';
+        messStatusLabel = 'Not Enrolled';
+      } else if (messBalanceDue > 0) {
+        if (messCycleStatus.status === 'EXPIRED') {
+          messDynamicStatus = 'EXPIRED';
+          messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Overdue)`;
+        } else {
+          messDynamicStatus = 'EXPIRING_SOON';
+          messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Month Due)`;
+        }
+      } else {
+        messDynamicStatus = messCycleStatus.status;
+        messStatusLabel = messCycleStatus.label;
+      }
 
       let rentDynamicStatus = 'ACTIVE';
       let rentStatusLabel = '';
@@ -199,13 +275,18 @@ exports.getDuesAndExpiries = (req, res) => {
       const enriched = {
         ...student,
         orgId,
+        admissionDate: student.admissionDate || '',
+        messStartDate: messStartDate,
+        messExpiryDate: computedMessExpiry,
         totalRentAgreed,
         totalRentPaid,
         rentBalanceDue,
+        totalMessPaid,
+        messBalanceDue,
 
-        messDynamicStatus: student.enrolledInMess ? messStatus.status : 'ACTIVE',
-        messStatusLabel: student.enrolledInMess ? messStatus.label : 'Not Enrolled',
-        messDaysRemaining: student.enrolledInMess ? messStatus.daysDiff : 999,
+        messDynamicStatus,
+        messStatusLabel,
+        messDaysRemaining: student.enrolledInMess ? messCycleStatus.daysDiff : 999,
 
         rentDynamicStatus,
         rentStatusLabel,
@@ -213,6 +294,9 @@ exports.getDuesAndExpiries = (req, res) => {
 
         whatsappReminder: generateWhatsAppReminder({
           ...student,
+          messStartDate,
+          messExpiryDate: computedMessExpiry,
+          messBalanceDue,
           totalRentAgreed,
           totalRentPaid,
           rentBalanceDue
@@ -220,8 +304,8 @@ exports.getDuesAndExpiries = (req, res) => {
       };
 
       if (student.enrolledInMess) {
-        if (messStatus.status === 'EXPIRING_SOON') messExpiringSoon.push(enriched);
-        if (messStatus.status === 'EXPIRED') messOverdue.push(enriched);
+        if (messDynamicStatus === 'EXPIRING_SOON') messExpiringSoon.push(enriched);
+        if (messDynamicStatus === 'EXPIRED') messOverdue.push(enriched);
       }
 
       if (student.memberType === 'HOSTEL_RESIDENT') {
@@ -229,7 +313,7 @@ exports.getDuesAndExpiries = (req, res) => {
         if (rentDynamicStatus === 'EXPIRED') rentOverdue.push(enriched);
       }
 
-      const isMessClear = !student.enrolledInMess || messStatus.status === 'ACTIVE';
+      const isMessClear = !student.enrolledInMess || (messDynamicStatus === 'ACTIVE' && messBalanceDue <= 0);
       const isRentClear = student.memberType !== 'HOSTEL_RESIDENT' || rentDynamicStatus === 'ACTIVE';
 
       if (isMessClear && isRentClear) {
@@ -272,7 +356,9 @@ exports.getCashbook = (req, res) => {
         date: p.paymentDate,
         paymentMode: p.paymentMode,
         recordedBy: p.collectedByAdminName,
-        receiptNo: p.receiptNo
+        receiptNo: p.receiptNo,
+        targetMonth: p.targetMonth || null,
+        studentId: p.studentId
       }));
 
     const outflows = expenses

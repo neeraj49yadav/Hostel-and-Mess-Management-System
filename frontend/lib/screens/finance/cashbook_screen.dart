@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/hostel_provider.dart';
 import '../../providers/dashboard_provider.dart';
 
 class CashbookScreen extends StatefulWidget {
@@ -18,6 +20,114 @@ class _CashbookScreenState extends State<CashbookScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardProvider>().fetchCashbook();
     });
+  }
+
+  Future<void> _confirmReversePayment(Map<String, dynamic> t) async {
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final paymentId = t['id']?.toString() ?? '';
+    final receiptNo = t['receiptNo'] ?? '';
+    final amount = (t['amount'] as num?)?.toDouble() ?? 0.0;
+
+    if (paymentId.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 28),
+            SizedBox(width: 8),
+            Text('Reverse Inflow Payment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to reverse & delete payment receipt #$receiptNo of ${AppFormatters.formatCurrency(amount)}?',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.danger.withValues(alpha: 0.2)),
+                ),
+                child: const Text(
+                  '⚠️ This rolls back the student\'s paid balance and recalculates validity. An immutable audit log entry will be created.',
+                  style: TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w500),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for Reversal *',
+                  hintText: 'e.g. Wrong entry, student paid incorrect amount',
+                ),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Please enter a reason' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Reverse & Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final hostel = context.read<HostelProvider>();
+      final auth = context.read<AuthProvider>();
+      final dash = context.read<DashboardProvider>();
+      final adminName = auth.currentAdmin?.name ?? 'Admin';
+
+      final success = await hostel.deletePayment(
+        paymentId,
+        reason: reasonController.text.trim(),
+        adminName: adminName,
+      );
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Inflow payment reversed successfully. Audit record created.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          dash.fetchCashbook();
+          dash.fetchDashboardStats();
+          dash.fetchDuesAndExpiries();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(hostel.error ?? 'Failed to delete payment'),
+              backgroundColor: AppColors.danger,
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -203,20 +313,57 @@ class _CashbookScreenState extends State<CashbookScreen> {
                                 color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
                               ),
                             ),
-                            subtitle: Text(
-                              '${t["category"]} via ${t["paymentMode"]} on ${AppFormatters.formatDate(t["date"])}\nBy: ${t["recordedBy"]}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
-                              ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${t["category"]} via ${t["paymentMode"]} on ${AppFormatters.formatDate(t["date"])}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                                  ),
+                                ),
+                                if (isInflow && t['targetMonth'] != null && t['targetMonth'].toString().isNotEmpty)
+                                  Text(
+                                    'Billing Month: ${t["targetMonth"]}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? AppColors.primaryLight : AppColors.primary,
+                                    ),
+                                  ),
+                                Text(
+                                  'By: ${t["recordedBy"]}${t["receiptNo"] != null ? " • Receipt #${t["receiptNo"]}" : ""}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                                  ),
+                                ),
+                              ],
                             ),
-                            trailing: Text(
-                              '${isInflow ? "+" : "-"}${AppFormatters.formatCurrency(t["amount"])}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: isInflow ? inColor : outColor,
-                              ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${isInflow ? "+" : "-"}${AppFormatters.formatCurrency(t["amount"])}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: isInflow ? inColor : outColor,
+                                  ),
+                                ),
+                                if (isInflow) ...[
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 20),
+                                    tooltip: 'Reverse Payment',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () => _confirmReversePayment(t),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         );

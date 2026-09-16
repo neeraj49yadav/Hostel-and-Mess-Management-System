@@ -29,19 +29,34 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
   String _feeType = 'MESS'; // Default to MESS or RENT or BOTH
   String _paymentMode = 'UPI';
 
+  late String _targetMonth;
+  late final List<String> _monthOptions;
+
   final _rentAmountCtrl = TextEditingController();
   final _messAmountCtrl = TextEditingController();
   final _totalAmountCtrl = TextEditingController();
   final _txnRefCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
 
-  int _messMonthsToAdd = 1;
+  final int _messMonthsToAdd = 1;
   int _rentMonthsToAdd = 6; // Default to 6-months Semester (2x a year)
   bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    _monthOptions = [];
+    for (int offset = -6; offset <= 6; offset++) {
+      final d = DateTime(now.year, now.month + offset, 1);
+      _monthOptions.add('${monthNames[d.month - 1]} ${d.year}');
+    }
+    _targetMonth = '${monthNames[now.month - 1]} ${now.year}';
+
     if (widget.defaultFeeType != null) {
       _feeType = widget.defaultFeeType!;
     }
@@ -64,7 +79,10 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
   }
 
   void _updateFeeFields(Student student) {
-    double mess = _feeType != 'RENT' ? (student.monthlyMessFee * _messMonthsToAdd) : 0.0;
+    double messDefault = student.messBalanceDue > 0
+        ? student.messBalanceDue
+        : (student.monthlyMessFee > 0 ? (student.monthlyMessFee * _messMonthsToAdd) : 3500.0);
+    double mess = _feeType != 'RENT' ? messDefault : 0.0;
     double rent = _feeType != 'MESS'
         ? (student.rentBalanceDue > 0 ? student.rentBalanceDue : (student.totalRentAgreed > 0 ? student.totalRentAgreed : 27000.0))
         : 0.0;
@@ -160,6 +178,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
       'rentAmount': rAmount,
       'messAmount': mAmount,
       'paymentMode': _paymentMode,
+      'targetMonth': _targetMonth,
       'transactionRef': _txnRefCtrl.text.trim(),
       'adminId': auth.currentAdmin?.id ?? 'admin-1',
       'adminName': auth.currentAdmin?.name ?? 'Admin',
@@ -210,6 +229,8 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
               Text('Receipt No: ${payment.receiptNo}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
               Text('Resident: ${payment.studentName} (Room ${payment.roomNumber})'),
+              if (payment.targetMonth.isNotEmpty)
+                Text('Billing Month: ${payment.targetMonth}', style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.primary)),
               Text('Amount Collected: ${AppFormatters.formatCurrency(payment.amount)} via ${payment.paymentMode}'),
               const SizedBox(height: 6),
               Container(
@@ -330,6 +351,21 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
             ),
             const SizedBox(height: 16),
 
+            // 🗓️ Target Billing Month Selector
+            DropdownButtonFormField<String>(
+              value: _targetMonth,
+              decoration: const InputDecoration(
+                labelText: 'Collecting For Month *',
+                prefixIcon: Icon(Icons.calendar_month_outlined),
+                helperText: 'Select which month this fee is being collected for',
+              ),
+              items: _monthOptions.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _targetMonth = val);
+              },
+            ),
+            const SizedBox(height: 16),
+
             // 🏨 Student Rent Ledger Summary (If RENT or BOTH)
             if (_currentStudent != null && (_feeType == 'RENT' || _feeType == 'BOTH') && _currentStudent!.isHostelResident) ...[
               Container(
@@ -408,6 +444,30 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('🍽️ Monthly Mess Subscription', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _currentStudent!.messBalanceDue <= 0
+                                ? AppColors.success.withValues(alpha: 0.15)
+                                : AppColors.warning.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _currentStudent!.messBalanceDue <= 0 ? 'Month Clear' : '₹${_currentStudent!.messBalanceDue.toStringAsFixed(0)} Due',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: _currentStudent!.messBalanceDue <= 0 ? AppColors.success : AppColors.warning,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Monthly Rate: ${AppFormatters.formatCurrency(_currentStudent!.monthlyMessFee)} / month', style: const TextStyle(fontSize: 12)),
                         Text(
                           'Valid: ${AppFormatters.formatDate(_currentStudent!.messExpiryDate)}',
                           style: TextStyle(fontSize: 12, color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight),
@@ -415,29 +475,12 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text('Monthly Rate: ${AppFormatters.formatCurrency(_currentStudent!.monthlyMessFee)} / month', style: const TextStyle(fontSize: 12)),
+                    Text(
+                      '• Student can pay in flexible partial installments anytime.\n• Due payment of 1st month clears balance without advancing validity.\n• Subsequent month payments extend meal plan validity by 1 month.',
+                      style: TextStyle(fontSize: 11, color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight, height: 1.3),
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 12),
-
-              // Mess Renewal Duration
-              DropdownButtonFormField<int>(
-                value: _messMonthsToAdd,
-                decoration: const InputDecoration(
-                  labelText: 'Mess Subscription Renewal Period',
-                  prefixIcon: Icon(Icons.restaurant_menu),
-                ),
-                items: [1, 2, 3, 6].map((m) {
-                  final fee = (_currentStudent?.monthlyMessFee ?? 3500.0) * m;
-                  return DropdownMenuItem(value: m, child: Text('$m Month${m > 1 ? 's' : ''} (₹${fee.toStringAsFixed(0)})'));
-                }).toList(),
-                onChanged: (v) {
-                  if (v != null) {
-                    setState(() => _messMonthsToAdd = v);
-                    if (_currentStudent != null) _updateFeeFields(_currentStudent!);
-                  }
-                },
               ),
               const SizedBox(height: 12),
             ],

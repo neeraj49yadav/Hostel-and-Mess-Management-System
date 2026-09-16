@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { calculateCycleStatus, generateWhatsAppReminder } = require('../services/expiryService');
+const { calculateCycleStatus, calculateMessExpiryDate, generateWhatsAppReminder } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 const storageService = require('../services/storageService');
@@ -28,39 +28,41 @@ exports.getMessMembers = (req, res) => {
       filtered = filtered.filter(s => s.memberType === 'HOSTEL_RESIDENT');
     }
 
-    let enriched = filtered.map(s => {
-      const messStatus = calculateCycleStatus(s.messExpiryDate, 5);
-      return {
-        ...s,
-        orgId,
-        messDynamicStatus: messStatus.status,
-        messStatusLabel: messStatus.label,
-        messDaysRemaining: messStatus.daysDiff,
-        whatsappReminder: generateWhatsAppReminder(s, 'MESS')
-      };
-    });
+    // Status filter
+    if (status && status !== 'ALL') {
+      filtered = filtered.filter(s => {
+        const cs = calculateCycleStatus(s.messExpiryDate, 5);
+        return cs.status === status;
+      });
+    }
 
+    // Search filter
     if (search) {
       const q = search.toLowerCase();
-      enriched = enriched.filter(s =>
+      filtered = filtered.filter(s =>
         s.name.toLowerCase().includes(q) ||
         s.phone.includes(q) ||
         (s.roomNumber && s.roomNumber.toLowerCase().includes(q))
       );
     }
 
-    if (status) {
-      enriched = enriched.filter(s => s.messDynamicStatus === status.toUpperCase());
-    }
-
-    enriched.sort((a, b) => a.messDaysRemaining - b.messDaysRemaining);
+    // Enrich with dynamic mess expiry status
+    const enriched = filtered.map(s => {
+      const cycle = calculateCycleStatus(s.messExpiryDate, 5);
+      return {
+        ...s,
+        dynamicStatus: cycle.status,
+        statusLabel: cycle.label,
+        daysRemaining: cycle.daysDiff
+      };
+    });
 
     res.json({
       success: true,
       count: enriched.length,
-      totalAllCount,
-      totalOutsideCount,
-      totalHostelCount,
+      totalCount: totalAllCount,
+      outsideCount: totalOutsideCount,
+      hostelCount: totalHostelCount,
       data: enriched
     });
   } catch (err) {
@@ -82,6 +84,7 @@ exports.createMessMember = async (req, res) => {
       photoUrl,
       monthlyMessFee,
       admissionDate,
+      messStartDate,
       cycleDay,
       notes,
       adminName
@@ -90,11 +93,11 @@ exports.createMessMember = async (req, res) => {
     const students = db.getCollectionForOrg('students', orgId);
     const fee = parseFloat(monthlyMessFee) || 3500;
     const admDate = admissionDate || new Date().toISOString().split('T')[0];
-    const cDay = cycleDay ? parseInt(cycleDay) : new Date(admDate).getDate();
+    const mStartDate = messStartDate || admDate;
+    const cDay = cycleDay ? parseInt(cycleDay) : new Date(mStartDate).getDate();
 
-    const messExp = new Date(admDate);
-    messExp.setMonth(messExp.getMonth() + 1);
-    const messExpiryDateStr = messExp.toISOString().split('T')[0];
+    // Initial 1 month validity plan granted at registration
+    const messExpiryDateStr = calculateMessExpiryDate(mStartDate, 0, fee);
 
     // ☁️ Offload photo to Supabase Storage if Base64
     const storedPhotoUrl = await storageService.processImage(photoUrl, 'members');
@@ -108,6 +111,7 @@ exports.createMessMember = async (req, res) => {
 
       students[index].enrolledInMess = true;
       students[index].monthlyMessFee = fee;
+      students[index].messStartDate = mStartDate;
       if (storedPhotoUrl && storedPhotoUrl.trim()) {
         students[index].photoUrl = storedPhotoUrl.trim();
       }
@@ -127,7 +131,7 @@ exports.createMessMember = async (req, res) => {
       logAudit({
         req,
         action: 'ENROLL_MESS_HOSTELITE',
-        details: `Enrolled resident ${students[index].name} (Room ${students[index].roomNumber}) into Mess at ₹${fee}/mo`,
+        details: `Enrolled resident ${students[index].name} (Room ${students[index].roomNumber}) into Mess at ₹${fee}/mo starting ${mStartDate}`,
         adminName
       });
 
@@ -157,6 +161,7 @@ exports.createMessMember = async (req, res) => {
       roomNumber: 'External / Day Scholar',
       bedNo: '-',
       admissionDate: admDate,
+      messStartDate: mStartDate,
       cycleDay: cDay,
       monthlyMessFee: fee,
       messExpiryDate: messExpiryDateStr,
@@ -177,7 +182,7 @@ exports.createMessMember = async (req, res) => {
     logAudit({
       req,
       action: 'ADD_MESS_MEMBER',
-      details: `Enrolled outside mess member ${newMember.name} (Phone: ${newMember.phone}) at ₹${newMember.monthlyMessFee}/mo`,
+      details: `Enrolled outside mess member ${newMember.name} (Phone: ${newMember.phone}) at ₹${newMember.monthlyMessFee}/mo starting ${newMember.messStartDate}`,
       adminName
     });
 

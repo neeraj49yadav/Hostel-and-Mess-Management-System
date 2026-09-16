@@ -1,13 +1,12 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { calculateCycleStatus, generateWhatsAppReminder } = require('../services/expiryService');
+const { calculateCycleStatus, calculateElapsedMessCycles, calculateMessExpiryDate, generateWhatsAppReminder } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 const storageService = require('../services/storageService');
 
 // Enrich student with distinct Mess & Rent statuses and payment balances
 function enrichStudent(student, preloadedPayments) {
-  const messStatus = calculateCycleStatus(student.messExpiryDate, 5);
   const targetOrgId = student.orgId || 'org-default';
 
   // Calculate total agreed rent and total payments from payments collection
@@ -23,6 +22,39 @@ function enrichStudent(student, preloadedPayments) {
   const totalMessPaid = payments
     .filter(p => p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0))
     .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
+
+  // Mess Dues & Expiry Deterministic Calculation
+  const monthlyMessFee = parseFloat(student.monthlyMessFee) || 3500;
+  let messBalanceDue = 0;
+  let computedMessExpiry = student.messExpiryDate;
+  const messStartDate = student.messStartDate || (student.enrolledInMess ? (student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0]) : null);
+
+  if (student.enrolledInMess && messStartDate) {
+    computedMessExpiry = calculateMessExpiryDate(messStartDate, totalMessPaid, monthlyMessFee);
+    const elapsedCycles = calculateElapsedMessCycles(messStartDate);
+    const totalMessBilled = elapsedCycles * monthlyMessFee;
+    messBalanceDue = Math.max(0, totalMessBilled - totalMessPaid);
+  }
+
+  const messCycleStatus = calculateCycleStatus(computedMessExpiry, 5);
+  let messDynamicStatus = 'ACTIVE';
+  let messStatusLabel = '';
+
+  if (!student.enrolledInMess) {
+    messDynamicStatus = 'ACTIVE';
+    messStatusLabel = 'Not Enrolled';
+  } else if (messBalanceDue > 0) {
+    if (messCycleStatus.status === 'EXPIRED') {
+      messDynamicStatus = 'EXPIRED';
+      messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Overdue)`;
+    } else {
+      messDynamicStatus = 'EXPIRING_SOON';
+      messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Month Due)`;
+    }
+  } else {
+    messDynamicStatus = messCycleStatus.status;
+    messStatusLabel = messCycleStatus.label;
+  }
 
   let rentDynamicStatus = 'ACTIVE';
   let rentStatusLabel = '';
@@ -48,26 +80,30 @@ function enrichStudent(student, preloadedPayments) {
 
   const rentDaysRemaining = rentBalanceDue > 0 ? -1 : 999;
 
-  // Overall status: if mess expired or rent unpaid -> EXPIRED / DUE
+  // Overall status: if mess overdue or rent unpaid -> EXPIRED / EXPIRING_SOON
   let dynamicStatus = 'ACTIVE';
-  if ((student.enrolledInMess && messStatus.status === 'EXPIRED') || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRED')) {
-    dynamicStatus = 'EXPIRED';
-  } else if ((student.enrolledInMess && messStatus.status === 'EXPIRING_SOON') || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRING_SOON')) {
+  if ((student.enrolledInMess && (messDynamicStatus === 'EXPIRED' || messBalanceDue > 0)) || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRED')) {
+    dynamicStatus = (messDynamicStatus === 'EXPIRED' || rentDynamicStatus === 'EXPIRED') ? 'EXPIRED' : 'EXPIRING_SOON';
+  } else if ((student.enrolledInMess && messDynamicStatus === 'EXPIRING_SOON') || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRING_SOON')) {
     dynamicStatus = 'EXPIRING_SOON';
   }
 
   return {
     ...student,
     orgId: targetOrgId,
+    admissionDate: student.admissionDate || '',
+    messStartDate: messStartDate,
+    messExpiryDate: computedMessExpiry,
     totalRentAgreed,
     totalRentPaid,
     rentBalanceDue,
     totalMessPaid,
+    messBalanceDue,
     totalPaidAll: totalRentPaid + totalMessPaid,
 
-    messDynamicStatus: student.enrolledInMess ? messStatus.status : 'ACTIVE',
-    messStatusLabel: student.enrolledInMess ? messStatus.label : 'Not Enrolled',
-    messDaysRemaining: student.enrolledInMess ? messStatus.daysDiff : 999,
+    messDynamicStatus,
+    messStatusLabel,
+    messDaysRemaining: student.enrolledInMess ? messCycleStatus.daysDiff : 999,
 
     rentDynamicStatus,
     rentStatusLabel,
@@ -75,10 +111,13 @@ function enrichStudent(student, preloadedPayments) {
 
     dynamicStatus,
     statusLabel: student.enrolledInMess
-      ? `Mess: ${messStatus.label} | Rent: ${rentStatusLabel}`
+      ? `Mess: ${messStatusLabel} | Rent: ${rentStatusLabel}`
       : `Hostel Rent: ${rentStatusLabel}`,
     whatsappReminder: generateWhatsAppReminder({
       ...student,
+      messStartDate,
+      messExpiryDate: computedMessExpiry,
+      messBalanceDue,
       totalRentAgreed,
       totalRentPaid,
       rentBalanceDue
@@ -206,6 +245,7 @@ exports.createStudent = async (req, res) => {
       roomId,
       bedNo,
       admissionDate,
+      messStartDate,
       cycleDay,
       monthlyMessFee,
       totalRentAgreed,
@@ -233,11 +273,13 @@ exports.createStudent = async (req, res) => {
     }
 
     const admDate = admissionDate || new Date().toISOString().split('T')[0];
+    const isMessEnrolled = enrolledInMess !== false;
+    const mStartDate = isMessEnrolled ? (messStartDate || admDate) : null;
+    const mFee = parseFloat(monthlyMessFee) || 3500;
     const cDay = cycleDay ? parseInt(cycleDay) : new Date(admDate).getDate();
 
-    // 1 Month initial Mess expiry
-    const messExp = new Date(admDate);
-    messExp.setMonth(messExp.getMonth() + 1);
+    // 1 Month initial Mess expiry granted at enrollment even if not paid upfront
+    const messExpiryDateStr = isMessEnrolled ? calculateMessExpiryDate(mStartDate, 0, mFee) : null;
 
     // Term/Semester initial Rent expiry (e.g. 6 or 4 months)
     const termMonths = parseInt(rentTermMonths) || 6;
@@ -253,7 +295,7 @@ exports.createStudent = async (req, res) => {
       id: `stud-${uuidv4().substring(0, 8)}`,
       orgId: orgId,
       memberType: 'HOSTEL_RESIDENT',
-      enrolledInMess: enrolledInMess !== false,
+      enrolledInMess: isMessEnrolled,
       photoUrl: storedPhotoUrl || '',
       name: name.trim(),
       phone: phone.trim(),
@@ -263,9 +305,10 @@ exports.createStudent = async (req, res) => {
       roomNumber: room.roomNumber,
       bedNo: bedNo.toUpperCase().trim(),
       admissionDate: admDate,
+      messStartDate: mStartDate,
       cycleDay: cDay,
-      monthlyMessFee: parseFloat(monthlyMessFee) || 3500,
-      messExpiryDate: messExp.toISOString().split('T')[0],
+      monthlyMessFee: mFee,
+      messExpiryDate: messExpiryDateStr,
       totalRentAgreed: agreedRent,
       rentTermMonths: termMonths,
       rentAmountPerTerm: agreedRent,
@@ -290,7 +333,7 @@ exports.createStudent = async (req, res) => {
     logAudit({
       req,
       action: 'ADD_STUDENT',
-      details: `Enrolled new resident ${newStudent.name} (Phone: ${newStudent.phone}) in Room ${room.roomNumber} (Bed ${newStudent.bedNo}). Total Agreed Rent: ₹${newStudent.totalRentAgreed}, Mess: ₹${newStudent.monthlyMessFee}/mo (${newStudent.enrolledInMess ? "Enrolled" : "Hostel Only"})`,
+      details: `Enrolled new resident ${newStudent.name} (Phone: ${newStudent.phone}) in Room ${room.roomNumber} (Bed ${newStudent.bedNo}). Hostel Adm: ${newStudent.admissionDate}, Mess Start: ${newStudent.messStartDate || 'N/A'}. Total Agreed Rent: ₹${newStudent.totalRentAgreed}, Mess: ₹${newStudent.monthlyMessFee}/mo (${newStudent.enrolledInMess ? "Enrolled" : "Hostel Only"})`,
       adminName
     });
 
@@ -318,6 +361,8 @@ exports.updateStudent = async (req, res) => {
       parentPhone,
       parentName,
       photoUrl,
+      admissionDate,
+      messStartDate,
       enrolledInMess,
       monthlyMessFee,
       messExpiryDate,
@@ -339,6 +384,18 @@ exports.updateStudent = async (req, res) => {
       storedPhotoUrl = await storageService.processImage(photoUrl, 'students');
     }
 
+    const updatedAdmissionDate = admissionDate !== undefined ? admissionDate : students[index].admissionDate;
+    const isMess = enrolledInMess !== undefined ? enrolledInMess : students[index].enrolledInMess;
+    const updatedMessStartDate = isMess
+      ? (messStartDate !== undefined ? messStartDate : (students[index].messStartDate || updatedAdmissionDate))
+      : null;
+
+    let updatedMessExpiry = messExpiryDate !== undefined ? messExpiryDate : students[index].messExpiryDate;
+    if (isMess && (!updatedMessExpiry || updatedMessExpiry === '')) {
+      const fee = monthlyMessFee !== undefined ? parseFloat(monthlyMessFee) : (students[index].monthlyMessFee || 3500);
+      updatedMessExpiry = calculateMessExpiryDate(updatedMessStartDate, 0, fee);
+    }
+
     students[index] = {
       ...students[index],
       name: name !== undefined ? name.trim() : students[index].name,
@@ -346,9 +403,11 @@ exports.updateStudent = async (req, res) => {
       parentPhone: parentPhone !== undefined ? parentPhone.trim() : students[index].parentPhone,
       parentName: parentName !== undefined ? parentName.trim() : students[index].parentName,
       photoUrl: storedPhotoUrl,
-      enrolledInMess: enrolledInMess !== undefined ? enrolledInMess : students[index].enrolledInMess,
+      admissionDate: updatedAdmissionDate,
+      messStartDate: updatedMessStartDate,
+      enrolledInMess: isMess,
       monthlyMessFee: monthlyMessFee !== undefined ? parseFloat(monthlyMessFee) : students[index].monthlyMessFee,
-      messExpiryDate: messExpiryDate !== undefined ? messExpiryDate : students[index].messExpiryDate,
+      messExpiryDate: updatedMessExpiry,
       totalRentAgreed: updatedRentAgreed !== undefined ? updatedRentAgreed : (students[index].rentAmountPerTerm || 0),
       rentTermMonths: rentTermMonths !== undefined ? parseInt(rentTermMonths) : students[index].rentTermMonths,
       rentAmountPerTerm: updatedRentAgreed !== undefined ? updatedRentAgreed : students[index].rentAmountPerTerm,

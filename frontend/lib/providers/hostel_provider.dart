@@ -201,6 +201,19 @@ class HostelProvider with ChangeNotifier {
     }
   }
 
+  Future<bool> deletePayment(String paymentId, {String? reason, String? adminName}) async {
+    try {
+      await _api.deletePayment(paymentId, reason: reason, adminName: adminName);
+      await fetchPayments();
+      await fetchStudents();
+      return true;
+    } catch (e) {
+      _error = e.toString().replaceAll('Exception:', '').trim();
+      notifyListeners();
+      return false;
+    }
+  }
+
   // Leave Logs
   Future<void> fetchLeaveLogs({String? status}) async {
     try {

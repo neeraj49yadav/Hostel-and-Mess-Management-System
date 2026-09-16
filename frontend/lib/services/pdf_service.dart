@@ -24,21 +24,23 @@ class PdfService {
   static String _formatBillingCycle(Payment payment, {bool isRent = true}) {
     final start = payment.cycleStartDate.trim();
     final rawEnd = _cleanPdfText(payment.cycleEndDate);
+    final targetMonth = payment.targetMonth.trim();
+    final monthPrefix = targetMonth.isNotEmpty ? 'Billing Month: $targetMonth\n' : '';
 
     if (rawEnd.isEmpty) {
-      return start.isNotEmpty ? 'Date: $start' : '-';
+      return '$monthPrefix${start.isNotEmpty ? 'Date: $start' : '-'}';
     }
 
     // If rawEnd is a plain ISO date like 2026-10-12
     if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawEnd)) {
-      return start.isNotEmpty ? '$start to $rawEnd' : 'Valid till: $rawEnd';
+      return '$monthPrefix${start.isNotEmpty ? '$start to $rawEnd' : 'Valid till: $rawEnd'}';
     }
 
     // If rawEnd is a descriptive summary (e.g. "Hostel Rent: Fully Paid (Rs. 27000 received, Rs. 0 due)")
     if (start.isNotEmpty && !rawEnd.contains(start)) {
-      return 'Payment Date: $start\n$rawEnd';
+      return '$monthPrefix${start.isNotEmpty ? 'Payment Date: $start\n' : ''}$rawEnd';
     }
-    return rawEnd;
+    return '$monthPrefix$rawEnd';
   }
 
   static Future<Uint8List> generateReceiptPdf(
@@ -125,6 +127,10 @@ class PdfService {
                           payment.roomNumber.isNotEmpty ? 'Room ${_cleanPdfText(payment.roomNumber)}' : 'Outside Day Scholar',
                           style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
                         ),
+                        if (payment.targetMonth.trim().isNotEmpty) ...[
+                          pw.SizedBox(height: 2),
+                          pw.Text('Billing Month: ${_cleanPdfText(payment.targetMonth)}', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+                        ],
                       ],
                     ),
                   ],

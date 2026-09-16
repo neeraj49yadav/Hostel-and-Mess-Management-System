@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { generateWhatsAppReceipt } = require('../services/expiryService');
+const { generateWhatsAppReceipt, calculateMessExpiryDate } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 
@@ -43,6 +43,7 @@ exports.recordPayment = (req, res) => {
       transactionRef,
       adminId,
       adminName,
+      targetMonth, // e.g. "September 2026"
       messMonthsToAdd = 1,
       rentMonthsToAdd = 6, // 6 months for semester, 4 for termly
       notes
@@ -94,15 +95,18 @@ exports.recordPayment = (req, res) => {
       }
     }
 
-    // 2. Advance Mess Expiry (Monthly)
+    // 2. Advance Mess Expiry deterministically
     if (finalMessAmount > 0 || feeType === 'MESS') {
-      const currentMessExp = new Date(student.messExpiryDate || new Date());
-      const baseMess = currentMessExp > new Date() ? currentMessExp : new Date();
-      const newMessExp = new Date(baseMess);
-      const months = parseInt(messMonthsToAdd) || 1;
-      newMessExp.setMonth(newMessExp.getMonth() + months);
-      student.messExpiryDate = newMessExp.toISOString().split('T')[0];
-      cycleSummary.push(`Mess: Extended till ${student.messExpiryDate} (${months} mo)`);
+      const previousMessPayments = payments
+        .filter(p => p.studentId === studentId && (p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0)))
+        .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
+
+      const updatedTotalMessPaid = previousMessPayments + finalMessAmount;
+      const messStartDate = student.messStartDate || student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0];
+      student.messExpiryDate = calculateMessExpiryDate(messStartDate, updatedTotalMessPaid, student.monthlyMessFee || 3500);
+
+      const monthLabel = targetMonth ? ` for ${targetMonth}` : '';
+      cycleSummary.push(`Mess: ₹${finalMessAmount} paid${monthLabel} (Valid till ${student.messExpiryDate})`);
     }
 
     // 3. Update Rent Ledger & Overpayment Guard
@@ -142,6 +146,9 @@ exports.recordPayment = (req, res) => {
     student.status = 'ACTIVE';
     db.saveCollectionForOrg('students', orgId, students);
 
+    const defaultMonth = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const chosenTargetMonth = targetMonth || defaultMonth;
+
     const newPayment = {
       id: `pay-${uuidv4().substring(0, 8)}`,
       orgId,
@@ -153,6 +160,7 @@ exports.recordPayment = (req, res) => {
       feeType: feeType || 'BOTH',
       rentAmount: finalRentAmount,
       messAmount: finalMessAmount,
+      targetMonth: chosenTargetMonth,
       paymentMode: paymentMode || 'CASH',
       transactionRef: transactionRef || '',
       paymentDate,
@@ -173,7 +181,7 @@ exports.recordPayment = (req, res) => {
     logAudit({
       req,
       action: 'RECORD_PAYMENT',
-      details: `Collected ₹${newPayment.amount} (${newPayment.feeType}) from ${student.name} (Room ${student.roomNumber}) via ${newPayment.paymentMode}. Receipt: ${newPayment.receiptNo}. Details: ${cycleSummary.join(', ')}`,
+      details: `Collected ₹${newPayment.amount} (${newPayment.feeType}) for ${newPayment.targetMonth} from ${student.name} (Room ${student.roomNumber}) via ${newPayment.paymentMode}. Receipt: ${newPayment.receiptNo}. Details: ${cycleSummary.join(', ')}`,
       adminName: newPayment.collectedByAdminName,
       adminId: newPayment.collectedByAdminId
     });
@@ -190,6 +198,64 @@ exports.recordPayment = (req, res) => {
       message: 'Payment recorded successfully',
       data: newPayment,
       whatsappReceipt
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Delete / Reverse Payment Record
+exports.deletePayment = (req, res) => {
+  try {
+    const orgId = extractOrgId(req);
+    const { id } = req.params;
+    const { reason, adminName, adminId } = req.body || {};
+
+    const payments = db.getCollectionForOrg('payments', orgId);
+    const paymentIndex = payments.findIndex(p => p.id === id);
+    if (paymentIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Payment record not found' });
+    }
+
+    const deletedPayment = payments[paymentIndex];
+    payments.splice(paymentIndex, 1);
+    db.saveCollectionForOrg('payments', orgId, payments);
+
+    // If student exists and payment had mess fees, recalculate messExpiryDate
+    const students = db.getCollectionForOrg('students', orgId);
+    const student = students.find(s => s.id === deletedPayment.studentId);
+    if (student && student.enrolledInMess && (deletedPayment.messAmount > 0 || deletedPayment.feeType === 'MESS' || deletedPayment.feeType === 'BOTH')) {
+      const remainingMessPayments = payments
+        .filter(p => p.studentId === student.id && (p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0)))
+        .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
+
+      const messStartDate = student.messStartDate || student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0];
+      student.messExpiryDate = calculateMessExpiryDate(messStartDate, remainingMessPayments, student.monthlyMessFee || 3500);
+      db.saveCollectionForOrg('students', orgId, students);
+    }
+
+    // 🛡️ Permanent Immutable Audit Log (Audit records are strictly non-deletable)
+    logAudit({
+      req,
+      action: 'PAYMENT_DELETED',
+      details: `Reversed/Deleted payment receipt ${deletedPayment.receiptNo} of ₹${deletedPayment.amount} (${deletedPayment.feeType}) for student ${deletedPayment.studentName} (Room ${deletedPayment.roomNumber}). Payment Mode: ${deletedPayment.paymentMode}, Date: ${deletedPayment.paymentDate}. Reason: ${reason || 'Administrative correction'}`,
+      adminName: adminName || (req.admin && req.admin.name) || 'Admin',
+      adminId: adminId || (req.admin && req.admin.id) || 'admin-1',
+      metadata: {
+        deletedPaymentId: deletedPayment.id,
+        receiptNo: deletedPayment.receiptNo,
+        amount: deletedPayment.amount,
+        studentId: deletedPayment.studentId,
+        studentName: deletedPayment.studentName,
+        feeType: deletedPayment.feeType,
+        reason: reason || 'Administrative correction'
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `Payment receipt ${deletedPayment.receiptNo} reversed and deleted successfully`,
+      data: deletedPayment
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

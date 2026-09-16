@@ -10,6 +10,7 @@ class Student {
   final String roomNumber;
   final String bedNo;
   final String admissionDate;
+  final String? messStartDate;
   final int cycleDay;
   final bool enrolledInMess;
   final double monthlyMessFee;
@@ -18,6 +19,7 @@ class Student {
   final double totalRentPaid;
   final double rentBalanceDue;
   final double totalMessPaid;
+  final double messBalanceDue;
   final double totalPaidAll;
   final int rentTermMonths;
   final double rentAmountPerTerm;
@@ -40,6 +42,7 @@ class Student {
 
   bool get isRentFullyPaid => isHostelResident && totalRentAgreed > 0 && rentBalanceDue <= 0;
   bool get hasRentDues => isHostelResident && rentBalanceDue > 0;
+  bool get hasMessDues => enrolledInMess && messBalanceDue > 0;
 
   double get totalMonthlyFee =>
       (enrolledInMess ? monthlyMessFee : 0.0) +
@@ -57,6 +60,7 @@ class Student {
     required this.roomNumber,
     required this.bedNo,
     required this.admissionDate,
+    this.messStartDate,
     required this.cycleDay,
     required this.enrolledInMess,
     required this.monthlyMessFee,
@@ -65,6 +69,7 @@ class Student {
     required this.totalRentPaid,
     required this.rentBalanceDue,
     required this.totalMessPaid,
+    this.messBalanceDue = 0.0,
     required this.totalPaidAll,
     required this.rentTermMonths,
     required this.rentAmountPerTerm,
@@ -98,6 +103,7 @@ class Student {
         (rentAgreed > rentPaid ? rentAgreed - rentPaid : 0.0);
 
     final messPaid = (json['totalMessPaid'] as num?)?.toDouble() ?? 0.0;
+    final messDue = (json['messBalanceDue'] as num?)?.toDouble() ?? 0.0;
     final totalAll = (json['totalPaidAll'] as num?)?.toDouble() ?? (rentPaid + messPaid);
 
     return Student(
@@ -112,6 +118,7 @@ class Student {
       roomNumber: json['roomNumber'] ?? (mType == 'MESS_ONLY' ? 'External / Day Scholar' : 'N/A'),
       bedNo: json['bedNo'] ?? '-',
       admissionDate: json['admissionDate'] ?? '',
+      messStartDate: json['messStartDate'] ?? (isMess ? json['admissionDate'] : null),
       cycleDay: json['cycleDay'] is int ? json['cycleDay'] : int.tryParse('${json['cycleDay']}') ?? 1,
       enrolledInMess: isMess,
       monthlyMessFee: fee,
@@ -120,6 +127,7 @@ class Student {
       totalRentPaid: rentPaid,
       rentBalanceDue: rentDue,
       totalMessPaid: messPaid,
+      messBalanceDue: messDue,
       totalPaidAll: totalAll,
       rentTermMonths: (json['rentTermMonths'] as num?)?.toInt() ?? 6,
       rentAmountPerTerm: rentAgreed,
@@ -152,6 +160,7 @@ class Student {
     'roomNumber': roomNumber,
     'bedNo': bedNo,
     'admissionDate': admissionDate,
+    'messStartDate': messStartDate,
     'cycleDay': cycleDay,
     'enrolledInMess': enrolledInMess,
     'monthlyMessFee': monthlyMessFee,
@@ -159,6 +168,8 @@ class Student {
     'totalRentAgreed': totalRentAgreed,
     'totalRentPaid': totalRentPaid,
     'rentBalanceDue': rentBalanceDue,
+    'totalMessPaid': totalMessPaid,
+    'messBalanceDue': messBalanceDue,
     'rentTermMonths': rentTermMonths,
     'rentAmountPerTerm': rentAmountPerTerm,
     'rentExpiryDate': rentExpiryDate,

@@ -36,6 +36,7 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
   int _rentTermMonths = 6; // Default to 6 Months (Semester / 2x a year)
   bool _enrolledInMess = true;
   DateTime _admissionDate = DateTime.now();
+  DateTime _messStartDate = DateTime.now();
   bool _isSubmitting = false;
 
   // Curated student avatar headshots for 1-tap selection
@@ -69,6 +70,11 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
       _enrolledInMess = s.enrolledInMess;
       if (s.admissionDate.isNotEmpty) {
         _admissionDate = DateTime.tryParse(s.admissionDate) ?? DateTime.now();
+      }
+      if (s.messStartDate != null && s.messStartDate!.isNotEmpty) {
+        _messStartDate = DateTime.tryParse(s.messStartDate!) ?? _admissionDate;
+      } else {
+        _messStartDate = _admissionDate;
       }
     }
 
@@ -318,6 +324,7 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
       'roomId': _selectedRoomId,
       'bedNo': _selectedBedNo,
       'admissionDate': _admissionDate.toIso8601String().split('T')[0],
+      'messStartDate': _enrolledInMess ? _messStartDate.toIso8601String().split('T')[0] : null,
       'cycleDay': _cycleDay,
       'enrolledInMess': _enrolledInMess,
       'monthlyMessFee': _enrolledInMess ? (double.tryParse(_messFeeController.text) ?? 3500.0) : 0.0,
@@ -635,6 +642,27 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
                           return 'Mess fee is required';
                         }
                         return null;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.restaurant_menu_outlined),
+                      title: const Text('Mess Joining Date', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      subtitle: Text('${_messStartDate.day}/${_messStartDate.month}/${_messStartDate.year} (Initial plan active for 1 month)'),
+                      trailing: const Icon(Icons.edit_calendar_outlined),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _messStartDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _messStartDate = picked;
+                          });
+                        }
                       },
                     ),
                   ],

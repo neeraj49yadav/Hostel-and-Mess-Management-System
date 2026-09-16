@@ -15,6 +15,8 @@ class Payment {
   final String cycleEndDate;
   final String collectedByAdminName;
   final String notes;
+  final String targetMonth;
+  final int messMonthsToAdd;
 
   Payment({
     required this.id,
@@ -33,6 +35,8 @@ class Payment {
     required this.cycleEndDate,
     required this.collectedByAdminName,
     required this.notes,
+    this.targetMonth = '',
+    this.messMonthsToAdd = 1,
   });
 
   factory Payment.fromJson(Map<String, dynamic> json) {
@@ -53,6 +57,8 @@ class Payment {
       cycleEndDate: json['cycleEndDate'] ?? '',
       collectedByAdminName: json['collectedByAdminName'] ?? 'Admin',
       notes: json['notes'] ?? '',
+      targetMonth: json['targetMonth'] ?? '',
+      messMonthsToAdd: (json['messMonthsToAdd'] as num?)?.toInt() ?? 1,
     );
   }
 }

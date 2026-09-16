@@ -164,6 +164,106 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     );
   }
 
+  Future<void> _confirmDeletePayment(Payment p) async {
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 28),
+            SizedBox(width: 8),
+            Text('Reverse Payment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to delete payment receipt #${p.receiptNo} of ${AppFormatters.formatCurrency(p.amount)}?',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.danger.withValues(alpha: 0.2)),
+                ),
+                child: const Text(
+                  '⚠️ This will roll back the student\'s balance and recalculate validity. An immutable audit log entry will be created.',
+                  style: TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w500),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for Reversal / Deletion *',
+                  hintText: 'e.g. Wrong entry, student paid incorrect amount',
+                ),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Please enter a reason' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Reverse & Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final hostel = context.read<HostelProvider>();
+      final auth = context.read<AuthProvider>();
+      final adminName = auth.currentAdmin?.name ?? 'Admin';
+
+      final success = await hostel.deletePayment(
+        p.id,
+        reason: reasonController.text.trim(),
+        adminName: adminName,
+      );
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Payment reversed successfully. Audit record created.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _loadStudentDetails();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(hostel.error ?? 'Failed to delete payment'),
+              backgroundColor: AppColors.danger,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   String _paymentFilter = 'ALL';
 
   @override
@@ -308,7 +408,9 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                     _buildInfoRow(Icons.phone_outlined, 'Phone', s.phone, isDark, isPhone: true),
                     if (s.parentPhone.isNotEmpty)
                       _buildInfoRow(Icons.family_restroom_outlined, 'Parent (${s.parentName})', s.parentPhone, isDark, isPhone: true),
-                    _buildInfoRow(Icons.calendar_today_outlined, 'Admission Date', AppFormatters.formatDate(s.admissionDate), isDark),
+                    _buildInfoRow(Icons.calendar_today_outlined, s.isMessOnly ? 'Joining Date' : 'Hostel Admission Date', AppFormatters.formatDate(s.admissionDate), isDark),
+                    if (s.enrolledInMess && s.messStartDate != null && s.messStartDate!.isNotEmpty)
+                      _buildInfoRow(Icons.restaurant_outlined, 'Mess Joining Date', AppFormatters.formatDate(s.messStartDate!), isDark),
                     if (s.notes.isNotEmpty)
                       _buildInfoRow(Icons.notes_outlined, 'Notes / Course', s.notes, isDark),
 
@@ -471,12 +573,27 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                                         ],
                                       ),
                                       const SizedBox(height: 2),
-                                      Text(
-                                        'Valid Till: ${AppFormatters.formatDate(s.messExpiryDate)} (Paid monthly)',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
-                                        ),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            s.messBalanceDue > 0
+                                                ? 'Mess Due: ${AppFormatters.formatCurrency(s.messBalanceDue)}'
+                                                : 'Mess Dues: ₹0 (Current)',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: s.messBalanceDue > 0 ? AppColors.danger : AppColors.success,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Valid Till: ${AppFormatters.formatDate(s.messExpiryDate)}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ] else ...[
                                       Text(
@@ -650,18 +767,26 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                   IconButton(
-                                     icon: Icon(Icons.picture_as_pdf_rounded, color: primColor, size: 20),
-                                     tooltip: 'View & Share Receipt PDF',
-                                     padding: EdgeInsets.zero,
-                                     constraints: const BoxConstraints(),
-                                     onPressed: () => PdfService.printReceipt(
-                                       p,
-                                       hostelName: context.read<AuthProvider>().currentOrganization?.name,
-                                     ),
-                                   ),
-                                 ],
-                               ),
+                                  IconButton(
+                                    icon: Icon(Icons.picture_as_pdf_rounded, color: primColor, size: 20),
+                                    tooltip: 'View & Share Receipt PDF',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () => PdfService.printReceipt(
+                                      p,
+                                      hostelName: context.read<AuthProvider>().currentOrganization?.name,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 20),
+                                    tooltip: 'Reverse & Delete Payment',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () => _confirmDeletePayment(p),
+                                  ),
+                                ],
+                              ),
                              ],
                            ),
                            const Divider(height: 12),
@@ -717,6 +842,24 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                                ),
                              ],
                            ),
+
+                            if (p.targetMonth.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.event_note_outlined, size: 12, color: primColor),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Billing Month: ${p.targetMonth}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: primColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
 
                            // Description & Period Notes (Full-width wrapping so it never clips)
                            if (p.cycleEndDate.isNotEmpty) ...[

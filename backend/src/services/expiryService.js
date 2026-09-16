@@ -33,6 +33,52 @@ function calculateCycleStatus(expiryDateStr, thresholdDays = 5) {
 }
 
 /**
+ * Calculate the number of mess billing cycles that have started from messStartDate up to asOfDate.
+ * Month 1 is billed immediately on messStartDate.
+ * Once 1 month elapses, Month 2 is billed, and so on.
+ */
+function calculateElapsedMessCycles(messStartDateStr, asOfDate = new Date()) {
+  if (!messStartDateStr) return 1;
+  const start = new Date(messStartDateStr);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date(asOfDate);
+  now.setHours(0, 0, 0, 0);
+
+  if (now <= start) return 1;
+
+  let cycles = 1;
+  const check = new Date(start);
+  while (true) {
+    check.setMonth(check.getMonth() + 1);
+    if (check <= now) {
+      cycles++;
+    } else {
+      break;
+    }
+  }
+  return cycles;
+}
+
+/**
+ * Calculate mess expiry date deterministically from messStartDate and totalMessPaid.
+ * Rule:
+ * 1. Upon enrollment, student gets 1-month plan validity even if they pay or not (max(1, monthsPaid)).
+ * 2. Paying the 1st month due fee clears the 1st month balance but does NOT upgrade validity (validity stays messStartDate + 1 month).
+ * 3. Paying subsequent months extends validity (messStartDate + monthsPaid).
+ */
+function calculateMessExpiryDate(messStartDateStr, totalMessPaid, monthlyMessFee) {
+  const baseStartStr = messStartDateStr || new Date().toISOString().split('T')[0];
+  const fee = parseFloat(monthlyMessFee) || 3500;
+  const paid = parseFloat(totalMessPaid) || 0;
+  const monthsPaid = Math.floor(paid / fee);
+  const validityMonths = Math.max(1, monthsPaid);
+
+  const exp = new Date(baseStartStr);
+  exp.setMonth(exp.getMonth() + validityMonths);
+  return exp.toISOString().split('T')[0];
+}
+
+/**
  * Generate a pre-formatted WhatsApp payment reminder text
  */
 function generateWhatsAppReminder(student, feeType = 'BOTH', hostelName = 'My Hostel & Mess') {
@@ -44,6 +90,7 @@ function generateWhatsAppReminder(student, feeType = 'BOTH', hostelName = 'My Ho
     rentBalanceDue = 0,
     monthlyMessFee = 3500,
     messExpiryDate,
+    messBalanceDue = 0,
     parentPhone,
     phone,
     enrolledInMess,
@@ -65,7 +112,8 @@ function generateWhatsAppReminder(student, feeType = 'BOTH', hostelName = 'My Ho
   }
 
   if (enrolledInMess !== false) {
-    message += `• *Mess Plan (Monthly)*: ₹${monthlyMessFee}/mo (Valid till: ${messExpiryDate || 'Due'} • ${messStatus.label})\n`;
+    const messDueText = messBalanceDue > 0 ? `• *Pending Mess Due: ₹${messBalanceDue.toFixed(0)}*` : '• *Mess Status: Fully Paid*';
+    message += `• *Mess Plan (Monthly)*: ₹${monthlyMessFee}/mo (Valid till: ${messExpiryDate || 'Due'} • ${messStatus.label})\n${messDueText}\n`;
   }
 
   message += `\n`;
@@ -73,7 +121,9 @@ function generateWhatsAppReminder(student, feeType = 'BOTH', hostelName = 'My Ho
   if (isResident && rentBalanceDue > 0) {
     message += `👉 *Pending Rent Balance*: ₹${rentBalanceDue.toFixed(0)}\n`;
   }
-  if (enrolledInMess !== false && messStatus.status !== 'ACTIVE') {
+  if (enrolledInMess !== false && messBalanceDue > 0) {
+    message += `👉 *Pending Monthly Mess Fee*: ₹${messBalanceDue.toFixed(0)}\n`;
+  } else if (enrolledInMess !== false && messStatus.status !== 'ACTIVE') {
     message += `👉 *Pending Monthly Mess Renewal*: ₹${monthlyMessFee}\n`;
   }
 
@@ -107,6 +157,10 @@ function generateWhatsAppReceipt(payment, student, hostelName = 'City Pride Host
     `💵 Amount Paid: *₹${payment.amount}* via ${payment.paymentMode}\n` +
     `📌 Fee Type: ${payment.feeType}\n`;
 
+  if (payment.targetMonth) {
+    message += `🗓️ For Month: *${payment.targetMonth}*\n`;
+  }
+
   if (payment.rentAmount > 0) {
     const remaining = payment.remainingRentBalanceAfterPayment !== undefined
       ? payment.remainingRentBalanceAfterPayment
@@ -135,6 +189,8 @@ function generateWhatsAppReceipt(payment, student, hostelName = 'City Pride Host
 
 module.exports = {
   calculateCycleStatus,
+  calculateElapsedMessCycles,
+  calculateMessExpiryDate,
   generateWhatsAppReminder,
   generateWhatsAppReceipt
 };

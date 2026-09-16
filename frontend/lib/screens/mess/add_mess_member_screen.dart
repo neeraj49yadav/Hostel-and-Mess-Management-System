@@ -61,7 +61,7 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
       _photoUrlController.text = m.photoUrl ?? '';
       _feeController.text = m.monthlyMessFee > 0 ? m.monthlyMessFee.toStringAsFixed(0) : '3500';
       _notesController.text = m.notes;
-      _startDate = DateTime.tryParse(m.admissionDate) ?? DateTime.now();
+      _startDate = DateTime.tryParse((m.messStartDate != null && m.messStartDate!.isNotEmpty) ? m.messStartDate! : m.admissionDate) ?? DateTime.now();
       _cycleDay = m.cycleDay > 0 ? m.cycleDay : 1;
       _selectedHostelStudentId = m.isHostelResident ? m.id : null;
     }
@@ -320,6 +320,7 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
       'photoUrl': _photoUrlController.text.trim(),
       'monthlyMessFee': double.tryParse(_feeController.text) ?? 3500.0,
       'admissionDate': _startDate.toIso8601String().split('T')[0],
+      'messStartDate': _startDate.toIso8601String().split('T')[0],
       'cycleDay': _cycleDay,
       'notes': _notesController.text.trim(),
       'adminName': auth.currentAdmin?.name ?? 'Mess In-charge',

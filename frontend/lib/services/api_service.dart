@@ -441,6 +441,13 @@ class ApiService {
     return list.map((p) => Payment.fromJson(p)).toList();
   }
 
+  Future<Map<String, dynamic>> deletePayment(String paymentId, {String? reason, String? adminName}) async {
+    return await _delete('${ApiConstants.payments}/$paymentId', body: {
+      ?'reason': reason,
+      ?'adminName': adminName,
+    });
+  }
+
   // --- 6. Mess Members & Expenses ---
   Future<Map<String, dynamic>> getMessMembers({String? type, String? search}) async {
     final params = <String, String>{};
