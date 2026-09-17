@@ -45,26 +45,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// 6. Public Health Check & Keep-Alive Ping (cron-job.org / UptimeRobot / Supabase Anti-Pause)
-app.get(['/api/health', '/api/ping', '/api/v1/keep-alive'], async (req, res) => {
-  let supabaseStatus = 'not_configured';
-  try {
-    const sb = db.getSupabaseClient();
-    if (sb) {
-      const { data, error } = await sb.from('organizations').select('id').limit(1);
-      supabaseStatus = error ? `error: ${error.message}` : 'active_and_awake';
-    }
-  } catch (err) {
-    supabaseStatus = `failed: ${err.message}`;
-  }
-
-  res.json({
+// 6. Public Health Check & Keep-Alive Ping (Instant sub-10ms response for keep-alive services)
+app.get(['/api/health', '/api/ping', '/api/v1/keep-alive'], (req, res) => {
+  res.status(200).json({
     status: 'online',
-    supabase: supabaseStatus,
+    uptime: Math.floor(process.uptime()),
     secure: true,
     securityFeatures: ['Helmet', 'JWT-Bearer-Auth', 'Rate-Limiting', 'Input-Sanitization', 'XSS-Protection'],
     timestamp: new Date().toISOString(),
-    service: 'Hostel & Mess 3-Admin Backend API'
+    service: 'Hostel & Mess 3-Admin Backend API',
+    version: '2.4.0'
   });
 });
 
@@ -138,13 +128,34 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔑 Admins:   3 Admin profiles loaded (PINs: 1111, 2222, 3333)`);
   console.log(`====================================================`);
 
-  // ⚡ 1. Autonomous 24-hr Supabase Keep-Alive (Prevents 7-Day Free Tier Pause)
+  // ⚡ 1. Autonomous 10-min Render Keep-Alive Self-Ping (Prevents 15-Minute Free Tier Sleep)
+  const https = require('https');
+  const http = require('http');
+  const RENDER_HEALTH_URL = process.env.RENDER_EXTERNAL_URL
+    ? `${process.env.RENDER_EXTERNAL_URL}/api/health`
+    : 'https://hostel-and-mess-management-system.onrender.com/api/health';
+
+  const KEEP_ALIVE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes (well before Render's 15-minute inactivity limit)
+  setInterval(() => {
+    try {
+      const client = RENDER_HEALTH_URL.startsWith('https') ? https : http;
+      client.get(RENDER_HEALTH_URL, (res) => {
+        console.log(`[KEEP-ALIVE] ⚡ Self-ping sent to ${RENDER_HEALTH_URL} (Status: ${res.statusCode}) at ${new Date().toISOString()}`);
+      }).on('error', (err) => {
+        console.warn('[KEEP-ALIVE] Self-ping network warning:', err.message);
+      });
+    } catch (err) {
+      console.warn('[KEEP-ALIVE] Self-ping execution warning:', err.message);
+    }
+  }, KEEP_ALIVE_INTERVAL_MS);
+
+  // ⚡ 2. Autonomous 24-hr Supabase Keep-Alive (Prevents 7-Day Free Tier Pause)
   setInterval(async () => {
     try {
       const sb = db.getSupabaseClient();
       if (sb) {
-        await sb.from('organizations').select('id').limit(1);
-        console.log(`[KEEP-ALIVE] ⚡ Supabase database pinged successfully at ${new Date().toISOString()}`);
+        await sb.storage.from('hostel-photos').list('', { limit: 1 });
+        console.log(`[KEEP-ALIVE] ⚡ Supabase storage pinged successfully at ${new Date().toISOString()}`);
       }
     } catch (e) {
       console.warn('[KEEP-ALIVE] Supabase ping warning:', e.message);

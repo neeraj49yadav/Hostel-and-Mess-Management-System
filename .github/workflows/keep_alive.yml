@@ -1,0 +1,23 @@
+name: Render 24/7 Keep-Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes round-the-clock to prevent Render container sleep
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep_alive:
+    name: Ping Cloud Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Backend Health Endpoint
+        run: |
+          echo "Sending Keep-Alive Ping to Render Cloud Backend..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --retry 3 --retry-delay 5 --max-time 45 https://hostel-and-mess-management-system.onrender.com/api/health)
+          echo "HTTP Response Status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "✅ Server is online, warm, and active!"
+          else
+            echo "⚠️ Server returned status $HTTP_STATUS during warm-up check."
+          fi

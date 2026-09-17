@@ -11,10 +11,14 @@ import 'providers/mess_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/auth/pin_screen.dart';
 import 'screens/home_shell.dart';
+import 'services/api_service.dart';
 import 'services/image_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ⚡ Pre-warm backend immediately in background (wakes Render container before user finishes entering PIN)
+  ApiService().preWarmServer();
 
   // ⚡ Synchronously restore organization and admin session from SharedPreferences.
   final prefs = await SharedPreferences.getInstance();

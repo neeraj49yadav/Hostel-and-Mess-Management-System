@@ -69,9 +69,10 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> _initOrganizationAndAdmins({bool allowAutoAuth = false}) async {
     await _restoreSavedSession(allowAutoAuth: allowAutoAuth);
-    await loadOrganizations();
-    await _loadAvailableAdmins();
-    await loadNotifications();
+    // ⚡ Fast non-blocking startup: dispatch background synchronization in parallel
+    loadOrganizations().catchError((_) {});
+    _loadAvailableAdmins().catchError((_) {});
+    loadNotifications().catchError((_) {});
   }
 
   Future<void> _restoreSavedSession({bool allowAutoAuth = false}) async {

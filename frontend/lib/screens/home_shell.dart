@@ -38,13 +38,23 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    // Initial fetch for all providers
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Initial fetch for all providers in staged smooth batches
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      // Phase 1: High-priority dashboard and resident counts
       context.read<DashboardProvider>().fetchDashboardStats();
       context.read<HostelProvider>().fetchStudents();
+
+      // Phase 2: Rooms and Mess roster
+      await Future.delayed(const Duration(milliseconds: 250));
+      if (!mounted) return;
       context.read<HostelProvider>().fetchRooms();
-      context.read<HostelProvider>().fetchLeaveLogs();
       context.read<MessProvider>().fetchMessMembers();
+
+      // Phase 3: Background logs and vendors
+      await Future.delayed(const Duration(milliseconds: 250));
+      if (!mounted) return;
+      context.read<HostelProvider>().fetchLeaveLogs();
       context.read<MessProvider>().fetchExpenses();
       context.read<MessProvider>().fetchVendors();
     });

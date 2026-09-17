@@ -110,6 +110,44 @@ class ApiService {
     return headers;
   }
 
+  /// ⚡ Pre-warm the backend container asynchronously immediately upon app launch
+  void preWarmServer() {
+    baseUrl.then((base) {
+      final healthUrl = base.replaceAll(RegExp(r'/v1/?$'), '/health');
+      final uri = Uri.parse(healthUrl);
+      http.get(uri).timeout(const Duration(seconds: 10)).then((_) {}).catchError((_) {});
+    }).catchError((_) {});
+  }
+
+  // ⚡ Auto-retry wrapper for handling container cold starts (502, 503, 504, connection drops)
+  Future<http.Response> _executeWithRetry(
+    Future<http.Response> Function() requestFn, {
+    int maxRetries = 3,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        final response = await requestFn();
+        // If Render is waking up from sleep, it returns 502/503/504
+        if ((response.statusCode == 502 || response.statusCode == 503 || response.statusCode == 504) && attempt <= maxRetries) {
+          final waitSeconds = attempt * 2; // 2s, 4s, 6s
+          await Future.delayed(Duration(seconds: waitSeconds));
+          continue;
+        }
+        return response;
+      } catch (e) {
+        // Transient network drops or timeouts during container cold boot
+        if (attempt <= maxRetries) {
+          final waitSeconds = attempt * 2;
+          await Future.delayed(Duration(seconds: waitSeconds));
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
   // Generic Secure HTTP Helpers
   Future<Map<String, dynamic>> _get(String endpoint, {Map<String, String>? params}) async {
     final base = await baseUrl;
@@ -118,7 +156,9 @@ class ApiService {
       uri = uri.replace(queryParameters: params);
     }
     final headers = await _buildHeaders();
-    final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 60));
+    final response = await _executeWithRetry(
+      () => http.get(uri, headers: headers).timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {
@@ -131,13 +171,15 @@ class ApiService {
     final base = await baseUrl;
     final uri = Uri.parse('$base$endpoint');
     final headers = await _buildHeaders();
-    final response = await http
-        .post(
-          uri,
-          headers: headers,
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 60));
+    final response = await _executeWithRetry(
+      () => http
+          .post(
+            uri,
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {
@@ -150,13 +192,15 @@ class ApiService {
     final base = await baseUrl;
     final uri = Uri.parse('$base$endpoint');
     final headers = await _buildHeaders();
-    final response = await http
-        .put(
-          uri,
-          headers: headers,
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 60));
+    final response = await _executeWithRetry(
+      () => http
+          .put(
+            uri,
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {
@@ -169,13 +213,15 @@ class ApiService {
     final base = await baseUrl;
     final uri = Uri.parse('$base$endpoint');
     final headers = await _buildHeaders();
-    final response = await http
-        .delete(
-          uri,
-          headers: headers,
-          body: body != null ? jsonEncode(body) : null,
-        )
-        .timeout(const Duration(seconds: 60));
+    final response = await _executeWithRetry(
+      () => http
+          .delete(
+            uri,
+            headers: headers,
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
     } else {
