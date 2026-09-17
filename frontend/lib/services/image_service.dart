@@ -8,6 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ImageService {
   static final ImagePicker _picker = ImagePicker();
 
+  /// In-memory flag tracking whether the native camera or gallery picker is actively open.
+  /// Prevents the app lifecycle observer from locking the screen while taking a photo.
+  static bool isPickingImage = false;
+
   /// Captures or picks an image and applies auto-compression.
   /// - [maxWidth] & [maxHeight]: Default 600px (ideal for high-DPI portrait circles without excessive byte weight)
   /// - [imageQuality]: Default 70% (maintains facial sharp details while cutting file size by 95%+)
@@ -17,6 +21,7 @@ class ImageService {
     int maxHeight = 600,
     int imageQuality = 70,
   }) async {
+    isPickingImage = true;
     try {
       XFile? file;
       try {
@@ -52,6 +57,8 @@ class ImageService {
       return 'data:image/jpeg;base64,$base64String';
     } catch (e) {
       return null;
+    } finally {
+      isPickingImage = false;
     }
   }
 

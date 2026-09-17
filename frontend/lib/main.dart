@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/navigation/app_navigator.dart';
 import 'core/theme/app_theme.dart';
 import 'models/admin_user.dart';
 import 'models/organization.dart';
@@ -20,8 +21,11 @@ void main() async {
   // ⚡ Pre-warm backend immediately in background (wakes Render container before user finishes entering PIN)
   ApiService().preWarmServer();
 
-  // ⚡ Synchronously restore organization and admin session from SharedPreferences.
+  // ⚡ Purge any stale pending_photo_context to guarantee clean PIN security
   final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('pending_photo_context');
+
+  // Synchronously restore organization and admin session from SharedPreferences for instant 0ms branding display
   final token = prefs.getString('auth_jwt_token');
   final adminId = prefs.getString('logged_admin_id');
   final adminName = prefs.getString('logged_admin_name');
@@ -65,13 +69,9 @@ void main() async {
   }
 
   // 🔒 Security: When the app is closed and opened again, ALWAYS require 4-digit PIN!
-  // Only auto-authenticate if recovering from an active native camera capture.
-  final pendingPhoto = prefs.getString('pending_photo_context');
-  final bool isCameraRecovery = pendingPhoto != null && pendingPhoto.isNotEmpty;
-  final bool autoAuthenticate = isCameraRecovery && hasValidSession;
-
+  // initialIsAuthenticated is strictly false on every app start.
   runApp(HostelMessAdminApp(
-    initialIsAuthenticated: autoAuthenticate,
+    initialIsAuthenticated: false,
     initialAdmin: initialAdmin,
     initialOrg: initialOrg,
   ));
@@ -115,7 +115,7 @@ class _HostelMessAdminAppState extends State<HostelMessAdminApp> with WidgetsBin
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) async {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       _backgroundedTime = DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
@@ -123,15 +123,13 @@ class _HostelMessAdminAppState extends State<HostelMessAdminApp> with WidgetsBin
         final elapsedSeconds = DateTime.now().difference(_backgroundedTime!).inSeconds;
         _backgroundedTime = null;
 
-        // Check if camera or image picker was actively open
-        final pendingPhoto = await ImageService.getPendingPhotoContext();
-        if (pendingPhoto != null && pendingPhoto.isNotEmpty) {
-          // Camera capture in progress - do not lock
+        // 📸 If the user was taking a photo or picking an image, NEVER lock the session!
+        if (ImageService.isPickingImage) {
           return;
         }
 
-        // If backgrounded for more than 15 seconds, lock the app to PIN screen for security
-        if (elapsedSeconds >= 15 && _authProvider.isAuthenticated) {
+        // 🔒 If backgrounded or minimized for more than 3 seconds, lock the app to PIN screen for security
+        if (elapsedSeconds >= 3 && _authProvider.isAuthenticated) {
           _authProvider.lockSession();
         }
       }
@@ -151,6 +149,7 @@ class _HostelMessAdminAppState extends State<HostelMessAdminApp> with WidgetsBin
       child: Consumer2<ThemeProvider, AuthProvider>(
         builder: (context, themeProvider, authProvider, child) {
           return MaterialApp(
+            navigatorKey: AppNavigator.key,
             title: 'Hostel and Mess Management System',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,

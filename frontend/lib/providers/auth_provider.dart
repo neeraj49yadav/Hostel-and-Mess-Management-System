@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/navigation/app_navigator.dart';
 import '../models/admin_user.dart';
 import '../models/organization.dart';
+import '../screens/auth/pin_screen.dart';
 import '../services/api_service.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -42,6 +44,10 @@ class AuthProvider with ChangeNotifier {
   void lockSession() {
     _isAuthenticated = false;
     notifyListeners();
+    AppNavigator.key.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PinScreen()),
+      (route) => false,
+    );
   }
 
   AuthProvider({
@@ -49,33 +55,26 @@ class AuthProvider with ChangeNotifier {
     AdminUser? initialAdmin,
     Organization? initialOrg,
   }) {
-    if (initialIsAuthenticated && initialAdmin != null) {
-      _isAuthenticated = true;
+    // 🔒 Security: Cold start ALWAYS starts unauthenticated on PinScreen
+    _isAuthenticated = false;
+    if (initialAdmin != null) {
       _currentAdmin = initialAdmin;
-      if (initialOrg != null) {
-        _currentOrganization = initialOrg;
-      }
-    } else {
-      _isAuthenticated = false;
-      if (initialAdmin != null) {
-        _currentAdmin = initialAdmin;
-      }
-      if (initialOrg != null) {
-        _currentOrganization = initialOrg;
-      }
     }
-    _initOrganizationAndAdmins(allowAutoAuth: initialIsAuthenticated);
+    if (initialOrg != null) {
+      _currentOrganization = initialOrg;
+    }
+    _initOrganizationAndAdmins();
   }
 
-  Future<void> _initOrganizationAndAdmins({bool allowAutoAuth = false}) async {
-    await _restoreSavedSession(allowAutoAuth: allowAutoAuth);
+  Future<void> _initOrganizationAndAdmins() async {
+    await _restoreSavedSession();
     // ⚡ Fast non-blocking startup: dispatch background synchronization in parallel
     loadOrganizations().catchError((_) {});
     _loadAvailableAdmins().catchError((_) {});
     loadNotifications().catchError((_) {});
   }
 
-  Future<void> _restoreSavedSession({bool allowAutoAuth = false}) async {
+  Future<void> _restoreSavedSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_jwt_token');
@@ -108,12 +107,8 @@ class AuthProvider with ChangeNotifier {
           logo: prefs.getString('selected_org_logo'),
         );
 
-        // 🔒 Security: Only auto-authenticate if explicitly allowed (e.g. active camera recovery)
-        if (allowAutoAuth) {
-          _isAuthenticated = true;
-        } else {
-          _isAuthenticated = false;
-        }
+        // 🔒 Security: Restoring session does NOT auto-login; always require 4-digit PIN!
+        _isAuthenticated = false;
         notifyListeners();
       } else {
         final savedOrgId = prefs.getString('selected_org_id');
@@ -618,9 +613,14 @@ class AuthProvider with ChangeNotifier {
     await prefs.remove('logged_admin_role');
     await prefs.remove('logged_admin_phone');
     await prefs.remove('logged_admin_photo');
+    await prefs.remove('pending_photo_context');
     await loadOrganizations();
     await _loadAvailableAdmins();
     notifyListeners();
+    AppNavigator.key.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PinScreen()),
+      (route) => false,
+    );
   }
 }
 
