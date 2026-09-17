@@ -7,6 +7,7 @@ import '../../models/student.dart';
 import '../../models/payment.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/hostel_provider.dart';
+import '../../providers/mess_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../services/pdf_service.dart';
 
@@ -57,15 +58,28 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
     }
     _targetMonth = '${monthNames[now.month - 1]} ${now.year}';
 
-    if (widget.defaultFeeType != null) {
-      _feeType = widget.defaultFeeType!;
-    }
     if (widget.preSelectedStudent != null) {
       _selectedStudentId = widget.preSelectedStudent!.id;
       _currentStudent = widget.preSelectedStudent;
       _rentMonthsToAdd = widget.preSelectedStudent!.rentTermMonths;
+      if (widget.preSelectedStudent!.isMessOnly || !widget.preSelectedStudent!.isHostelResident) {
+        _feeType = 'MESS';
+      } else if (!widget.preSelectedStudent!.enrolledInMess) {
+        _feeType = 'RENT';
+      } else if (widget.defaultFeeType != null) {
+        _feeType = widget.defaultFeeType!;
+      }
       _updateFeeFields(widget.preSelectedStudent!);
+    } else if (widget.defaultFeeType != null) {
+      _feeType = widget.defaultFeeType!;
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final hostel = context.read<HostelProvider>();
+      final mess = context.read<MessProvider>();
+      if (hostel.students.isEmpty) hostel.fetchStudents();
+      if (mess.messMembers.isEmpty) mess.fetchMessMembers();
+    });
   }
 
   @override
@@ -96,20 +110,57 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
   }
 
   void _onStudentChanged(String? studentId, List<Student> students) {
-    if (studentId == null) return;
-    final s = students.firstWhere((st) => st.id == studentId);
+    if (studentId == null) {
+      setState(() {
+        _selectedStudentId = null;
+        _currentStudent = null;
+        _rentAmountCtrl.clear();
+        _messAmountCtrl.clear();
+        _totalAmountCtrl.clear();
+      });
+      return;
+    }
+    final s = students.firstWhere((st) => st.id == studentId, orElse: () => students.first);
     setState(() {
       _selectedStudentId = studentId;
       _currentStudent = s;
       _rentMonthsToAdd = s.rentTermMonths;
+      // If selected student is Mess-Only, strictly lock feeType to MESS
+      if (s.isMessOnly || !s.isHostelResident) {
+        _feeType = 'MESS';
+      } else if (!s.enrolledInMess && _feeType != 'RENT') {
+        _feeType = 'RENT';
+      }
     });
     _updateFeeFields(s);
   }
 
-  void _onFeeTypeChanged(String? val) {
+  void _onFeeTypeChanged(String? val, List<Student> allStudents) {
     if (val != null) {
-      setState(() => _feeType = val);
-      if (_currentStudent != null) _updateFeeFields(_currentStudent!);
+      setState(() {
+        _feeType = val;
+        // Verify if currently selected student is compatible with the new fee type
+        if (_currentStudent != null) {
+          bool isCompatible = false;
+          if (val == 'RENT') {
+            isCompatible = _currentStudent!.isHostelResident;
+          } else if (val == 'MESS') {
+            isCompatible = _currentStudent!.isMessOnly || _currentStudent!.enrolledInMess;
+          } else if (val == 'BOTH') {
+            isCompatible = _currentStudent!.isHostelResident && _currentStudent!.enrolledInMess;
+          }
+
+          if (!isCompatible) {
+            _selectedStudentId = null;
+            _currentStudent = null;
+            _rentAmountCtrl.clear();
+            _messAmountCtrl.clear();
+            _totalAmountCtrl.clear();
+          } else {
+            _updateFeeFields(_currentStudent!);
+          }
+        }
+      });
     }
   }
 
@@ -304,8 +355,35 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
   @override
   Widget build(BuildContext context) {
     final hostel = context.watch<HostelProvider>();
-    final students = hostel.students;
+    final mess = context.watch<MessProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Combine all students from both providers (Hostel residents + Outside mess members)
+    final studentMap = <String, Student>{};
+    for (final s in hostel.students) {
+      studentMap[s.id] = s;
+    }
+    for (final s in mess.messMembers) {
+      studentMap[s.id] = s;
+    }
+    final allStudents = studentMap.values.toList();
+
+    // 🎯 Filter residents strictly based on Payment Purpose:
+    // 1. Hostel Rent ('RENT'): ONLY Hostel Room Residents
+    // 2. Mess Fee Monthly ('MESS'): ONLY Mess Members (outside mess members & hostellers enrolled in mess)
+    // 3. Both ('BOTH'): ONLY Hostel Room Residents who are enrolled in mess
+    List<Student> filteredStudents;
+    if (_feeType == 'RENT') {
+      filteredStudents = allStudents.where((s) => s.isHostelResident).toList();
+    } else if (_feeType == 'MESS') {
+      filteredStudents = allStudents.where((s) => s.isMessOnly || s.enrolledInMess).toList();
+    } else {
+      filteredStudents = allStudents.where((s) => s.isHostelResident && s.enrolledInMess).toList();
+    }
+    filteredStudents.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    final hasSelectedStudent = filteredStudents.any((s) => s.id == _selectedStudentId);
+    final safeSelectedId = hasSelectedStudent ? _selectedStudentId : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -318,18 +396,43 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
           children: [
             // Resident Picker
             DropdownButtonFormField<String>(
-              value: _selectedStudentId,
-              decoration: const InputDecoration(
-                labelText: 'Select Resident *',
-                prefixIcon: Icon(Icons.person_search_outlined),
+              value: safeSelectedId,
+              decoration: InputDecoration(
+                labelText: _feeType == 'RENT'
+                    ? 'Select Hostel Resident *'
+                    : (_feeType == 'MESS'
+                        ? 'Select Mess Member / Student *'
+                        : 'Select Resident (Hostel + Mess) *'),
+                prefixIcon: Icon(_feeType == 'RENT'
+                    ? Icons.apartment_outlined
+                    : (_feeType == 'MESS' ? Icons.restaurant_outlined : Icons.person_search_outlined)),
+                helperText: _feeType == 'RENT'
+                    ? 'Showing only hostel room residents'
+                    : (_feeType == 'MESS'
+                        ? 'Showing outside mess members & enrolled hostellers'
+                        : 'Showing hostellers enrolled in mess'),
               ),
-              items: students.map((s) {
-                return DropdownMenuItem(
+              items: filteredStudents.map((s) {
+                final String detail;
+                if (s.isMessOnly) {
+                  detail = 'Outside Mess • ₹${s.monthlyMessFee.toStringAsFixed(0)}/mo (Due: ₹${s.messBalanceDue.toStringAsFixed(0)})';
+                } else if (_feeType == 'RENT') {
+                  detail = 'Room ${s.roomNumber} • Rent Due: ₹${s.rentBalanceDue.toStringAsFixed(0)}';
+                } else if (_feeType == 'MESS') {
+                  detail = 'Room ${s.roomNumber} • Mess Due: ₹${s.messBalanceDue.toStringAsFixed(0)}';
+                } else {
+                  detail = 'Room ${s.roomNumber} • Rent: ₹${s.rentBalanceDue.toStringAsFixed(0)}, Mess: ₹${s.messBalanceDue.toStringAsFixed(0)}';
+                }
+                return DropdownMenuItem<String>(
                   value: s.id,
-                  child: Text('${s.name} • Room ${s.roomNumber} (Due: ₹${s.rentBalanceDue.toStringAsFixed(0)})'),
+                  child: Text(
+                    '${s.name} ($detail)',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13),
+                  ),
                 );
               }).toList(),
-              onChanged: (val) => _onStudentChanged(val, students),
+              onChanged: (val) => _onStudentChanged(val, allStudents),
               validator: (v) => v == null ? 'Resident selection required' : null,
             ),
             const SizedBox(height: 16),
@@ -341,11 +444,17 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildFeeTypeChip('🏨 Hostel Rent', 'RENT'),
-                  const SizedBox(width: 8),
-                  _buildFeeTypeChip('🍽️ Mess Fee (Monthly)', 'MESS'),
-                  const SizedBox(width: 8),
-                  _buildFeeTypeChip('Both', 'BOTH'),
+                  if (_currentStudent == null || _currentStudent!.isHostelResident) ...[
+                    _buildFeeTypeChip('🏨 Hostel Rent', 'RENT', allStudents),
+                    const SizedBox(width: 8),
+                  ],
+                  if (_currentStudent == null || _currentStudent!.isMessOnly || _currentStudent!.enrolledInMess) ...[
+                    _buildFeeTypeChip('🍽️ Mess Fee (Monthly)', 'MESS', allStudents),
+                    const SizedBox(width: 8),
+                  ],
+                  if (_currentStudent == null || (_currentStudent!.isHostelResident && _currentStudent!.enrolledInMess)) ...[
+                    _buildFeeTypeChip('Both', 'BOTH', allStudents),
+                  ],
                 ],
               ),
             ),
@@ -633,13 +742,13 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
     );
   }
 
-  Widget _buildFeeTypeChip(String label, String value) {
+  Widget _buildFeeTypeChip(String label, String value, List<Student> allStudents) {
     final isSelected = _feeType == value;
     return ChoiceChip(
       label: Text(label, style: const TextStyle(fontSize: 12)),
       selected: isSelected,
       selectedColor: AppColors.primary.withValues(alpha: 0.15),
-      onSelected: (_) => _onFeeTypeChanged(value),
+      onSelected: (_) => _onFeeTypeChanged(value, allStudents),
     );
   }
 }
