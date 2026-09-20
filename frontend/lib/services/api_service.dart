@@ -584,37 +584,53 @@ class ApiService {
   // --- 8. Offline & Annual Backups Export ---
   Future<String> downloadMasterDataCsv() async {
     final base = await baseUrl;
-    final token = await authToken;
+    final headers = await _buildHeaders();
     final url = Uri.parse('$base/export/master-data?format=csv');
-    final res = await http.get(url, headers: {
-      if (token != null) 'Authorization': 'Bearer $token',
-    });
+    final res = await _client.get(url, headers: headers);
     if (res.statusCode == 200) {
       return res.body;
     }
     throw Exception('Failed to download Master Data (${res.statusCode}): ${res.body}');
   }
 
+  Future<List<dynamic>> downloadMasterDataJson() async {
+    final base = await baseUrl;
+    final headers = await _buildHeaders();
+    final url = Uri.parse('$base/export/master-data?format=json');
+    final res = await _client.get(url, headers: headers);
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as List<dynamic>;
+    }
+    throw Exception('Failed to fetch Master Data JSON (${res.statusCode})');
+  }
+
   Future<String> downloadCashbookPnlCsv({int? year}) async {
     final base = await baseUrl;
-    final token = await authToken;
+    final headers = await _buildHeaders();
     final url = Uri.parse('$base/export/cashbook-pnl?format=csv${year != null ? '&year=$year' : ''}');
-    final res = await http.get(url, headers: {
-      if (token != null) 'Authorization': 'Bearer $token',
-    });
+    final res = await _client.get(url, headers: headers);
     if (res.statusCode == 200) {
       return res.body;
     }
     throw Exception('Failed to download Cashbook & P&L (${res.statusCode}): ${res.body}');
   }
 
+  Future<Map<String, dynamic>> downloadCashbookPnlJson({int? year}) async {
+    final base = await baseUrl;
+    final headers = await _buildHeaders();
+    final url = Uri.parse('$base/export/cashbook-pnl?format=json${year != null ? '&year=$year' : ''}');
+    final res = await _client.get(url, headers: headers);
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to fetch Cashbook JSON (${res.statusCode})');
+  }
+
   Future<String> downloadFullBackupJson() async {
     final base = await baseUrl;
-    final token = await authToken;
+    final headers = await _buildHeaders();
     final url = Uri.parse('$base/export/backup');
-    final res = await http.get(url, headers: {
-      if (token != null) 'Authorization': 'Bearer $token',
-    });
+    final res = await _client.get(url, headers: headers);
     if (res.statusCode == 200) {
       return res.body;
     }

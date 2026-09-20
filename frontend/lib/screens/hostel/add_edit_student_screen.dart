@@ -565,7 +565,7 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
                   child: DropdownButtonFormField<int>(
                     value: _cycleDay,
                     decoration: const InputDecoration(labelText: 'Fee Cycle Day', prefixIcon: Icon(Icons.calendar_today_outlined)),
-                    items: List.generate(28, (i) => i + 1).map((day) {
+                    items: List.generate(31, (i) => i + 1).map((day) {
                       return DropdownMenuItem<int>(
                         value: day,
                         child: Text('Day $day of Month'),

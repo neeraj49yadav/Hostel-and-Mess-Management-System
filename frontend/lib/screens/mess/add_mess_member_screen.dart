@@ -707,7 +707,7 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
                 prefixIcon: Icon(Icons.event_repeat),
                 helperText: 'e.g. Day 5 of every month',
               ),
-              items: List.generate(28, (i) => i + 1).map((d) {
+              items: List.generate(31, (i) => i + 1).map((d) {
                 return DropdownMenuItem(value: d, child: Text('Day $d of every month'));
               }).toList(),
               onChanged: (val) {

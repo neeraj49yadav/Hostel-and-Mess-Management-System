@@ -415,87 +415,28 @@ class _PinScreenState extends State<PinScreen> {
 
   void _showJoinOrgDialog() {
     final auth = context.read<AuthProvider>();
-    final searchCtrl = TextEditingController();
+    final joinCodeCtrl = TextEditingController();
+    final currentOrg = auth.currentOrganization;
 
     showDialog(
       context: context,
       builder: (ctx) {
-        bool isRefreshing = false;
-        String filterQuery = '';
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        bool isSubmitting = false;
 
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
-            final isDark = Theme.of(ctx).brightness == Brightness.dark;
-            final currentOrg = auth.currentOrganization;
-            final allOrgs = auth.availableOrganizations;
-
-            // Filter organizations based on search query
-            final query = filterQuery.trim().toUpperCase();
-            final filteredOrgs = allOrgs.where((o) {
-              if (query.isEmpty) return true;
-              return o.code.toUpperCase().contains(query) ||
-                  o.name.toUpperCase().contains(query) ||
-                  o.city.toUpperCase().contains(query);
-            }).toList();
-
-            Future<void> connectToOrg(Organization org) async {
-              await auth.selectOrganization(org);
-              if (mounted) {
-                if (ctx.mounted) Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('✅ Connected to: ${org.name} (${org.code})'),
-                    backgroundColor: AppColors.success,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            }
-
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              titlePadding: const EdgeInsets.fromLTRB(20, 20, 16, 8),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              title: Row(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              title: const Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.business_rounded, color: AppColors.primary, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Select / Connect Hostel',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  if (isRefreshing)
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded, size: 20),
-                      tooltip: 'Refresh from cloud',
-                      onPressed: () async {
-                        setDialogState(() => isRefreshing = true);
-                        await auth.loadOrganizations();
-                        if (dialogCtx.mounted) {
-                          setDialogState(() => isRefreshing = false);
-                        }
-                      },
-                    ),
+                  Icon(Icons.vpn_key_rounded, color: AppColors.primary),
+                  SizedBox(width: 8),
+                  Text('Connect by Hostel Code', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ],
               ),
               content: SizedBox(
-                width: 420,
+                width: 360,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -503,38 +444,23 @@ class _PinScreenState extends State<PinScreen> {
                     children: [
                       if (currentOrg != null) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: AppColors.success.withValues(alpha: isDark ? 0.15 : 0.08),
-                            borderRadius: BorderRadius.circular(12),
+                            color: AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.08),
+                            borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: AppColors.success.withValues(alpha: 0.35),
+                              color: AppColors.primary.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 18),
-                              const SizedBox(width: 10),
+                              const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 16),
+                              const SizedBox(width: 8),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'CURRENTLY CONNECTED',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.8,
-                                        color: AppColors.success,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${currentOrg.name} (${currentOrg.code})',
-                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+                                child: Text(
+                                  'Current: ${currentOrg.name} (${currentOrg.code})',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -542,193 +468,31 @@ class _PinScreenState extends State<PinScreen> {
                         ),
                         const SizedBox(height: 14),
                       ],
-
-                      // Search input
+                      const Text(
+                        'Enter your hostel unique code or name to connect:',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 14),
                       TextField(
-                        controller: searchCtrl,
+                        controller: joinCodeCtrl,
                         textCapitalization: TextCapitalization.characters,
-                        onChanged: (val) {
-                          setDialogState(() {
-                            filterQuery = val;
-                          });
-                        },
+                        autofocus: true,
+                        style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
                         decoration: InputDecoration(
-                          hintText: 'Search name or code (e.g. YADAV)',
-                          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                          suffixIcon: searchCtrl.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear_rounded, size: 18),
-                                  onPressed: () {
-                                    searchCtrl.clear();
-                                    setDialogState(() {
-                                      filterQuery = '';
-                                    });
-                                  },
-                                )
-                              : null,
-                          isDense: true,
+                          labelText: 'Hostel / Organization Code',
+                          hintText: 'e.g. YADAV',
+                          prefixIcon: const Icon(Icons.vpn_key_rounded, size: 20),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         ),
+                        onSubmitted: (_) {
+                          if (!isSubmitting) {
+                            // trigger connect
+                          }
+                        },
                       ),
-                      const SizedBox(height: 12),
-
-                      // List of available organizations
-                      const Text(
-                        'Registered Hostels (Tap to connect):',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 8),
-
-                      if (filteredOrgs.isEmpty && !isRefreshing)
-                        Container(
-                          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
-                          alignment: Alignment.center,
-                          child: Column(
-                            children: [
-                              Icon(Icons.search_off_rounded, size: 36, color: Colors.grey.shade400),
-                              const SizedBox(height: 8),
-                              Text(
-                                filterQuery.isNotEmpty
-                                    ? 'No hostel matching "$filterQuery"'
-                                    : 'No hostels loaded from cloud.',
-                                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                                textAlign: TextAlign.center,
-                              ),
-                              if (allOrgs.isEmpty) ...[
-                                const SizedBox(height: 10),
-                                ElevatedButton.icon(
-                                  onPressed: () async {
-                                    setDialogState(() => isRefreshing = true);
-                                    await auth.loadOrganizations();
-                                    if (dialogCtx.mounted) {
-                                      setDialogState(() => isRefreshing = false);
-                                    }
-                                  },
-                                  icon: const Icon(Icons.cloud_download_rounded, size: 16),
-                                  label: const Text('Fetch Hostels from Cloud', style: TextStyle(fontSize: 12)),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        )
-                      else
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 240),
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: filteredOrgs.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 6),
-                            itemBuilder: (c, idx) {
-                              final org = filteredOrgs[idx];
-                              final isCurrent = currentOrg?.id == org.id || currentOrg?.code == org.code;
-
-                              return Material(
-                                color: isCurrent
-                                    ? AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.08)
-                                    : (isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight),
-                                borderRadius: BorderRadius.circular(12),
-                                child: InkWell(
-                                  onTap: () => connectToOrg(org),
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    child: Row(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 18,
-                                          backgroundColor: isCurrent ? AppColors.primary : Colors.grey.shade300,
-                                          child: Icon(
-                                            Icons.domain_rounded,
-                                            size: 18,
-                                            color: isCurrent ? Colors.white : Colors.grey.shade700,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                org.name,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  color: isCurrent ? AppColors.primary : null,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                    ),
-                                                    child: Text(
-                                                      'Code: ${org.code}',
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w600,
-                                                        letterSpacing: 0.5,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  if (org.city.isNotEmpty) ...[
-                                                    const SizedBox(width: 6),
-                                                    Flexible(
-                                                      child: Text(
-                                                        '• ${org.city}',
-                                                        style: const TextStyle(
-                                                          fontSize: 11,
-                                                          color: AppColors.textSecondary,
-                                                        ),
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        if (isCurrent)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.success.withValues(alpha: 0.15),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: const Text(
-                                              'Active',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppColors.success,
-                                              ),
-                                            ),
-                                          )
-                                        else
-                                          const Icon(
-                                            Icons.arrow_forward_ios_rounded,
-                                            size: 14,
-                                            color: AppColors.textSecondary,
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -739,46 +503,70 @@ class _PinScreenState extends State<PinScreen> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    final input = searchCtrl.text.trim().toUpperCase();
-                    if (input.isEmpty) {
-                      if (filteredOrgs.isNotEmpty) {
-                        await connectToOrg(filteredOrgs.first);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please enter or select a hostel to connect'),
-                            backgroundColor: AppColors.warning,
-                          ),
-                        );
-                      }
-                      return;
-                    }
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final code = joinCodeCtrl.text.trim().toUpperCase();
+                          if (code.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter an organization code'),
+                                backgroundColor: AppColors.warning,
+                              ),
+                            );
+                            return;
+                          }
 
-                    // Flexible match: code exact, name exact, contains, or starts with
-                    final matched = allOrgs.where((o) {
-                      final c = o.code.trim().toUpperCase();
-                      final n = o.name.trim().toUpperCase();
-                      return c == input ||
-                          n == input ||
-                          n.contains(input) ||
-                          input.contains(n) ||
-                          c.contains(input);
-                    }).firstOrNull;
+                          setDialogState(() => isSubmitting = true);
 
-                    if (matched != null) {
-                      await connectToOrg(matched);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('❌ Organization "$input" not found in cloud. Please check the code/name or register below.'),
-                          backgroundColor: AppColors.danger,
-                          duration: const Duration(seconds: 4),
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text('Connect'),
+                          // 1. Fetch latest organizations from backend or persistent cache
+                          await auth.loadOrganizations();
+                          final orgs = auth.availableOrganizations;
+
+                          // 2. Flexible matching (code exact, name exact, contains)
+                          final matched = orgs.where((o) {
+                            final c = o.code.trim().toUpperCase();
+                            final n = o.name.trim().toUpperCase();
+                            return c == code ||
+                                n == code ||
+                                n.contains(code) ||
+                                code.contains(n) ||
+                                c.contains(code);
+                          }).firstOrNull;
+
+                          if (matched == null) {
+                            if (mounted) {
+                              setDialogState(() => isSubmitting = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('❌ Organization with code "$code" not found. Please verify the code or register your hostel first.'),
+                                  backgroundColor: AppColors.danger,
+                                  duration: const Duration(seconds: 4),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+
+                          // 3. Registered Organization found -> Connect safely
+                          await auth.selectOrganization(matched);
+                          if (mounted) {
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('✅ Connected to: ${matched.name} (${matched.code})'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Connect'),
                 ),
               ],
             );

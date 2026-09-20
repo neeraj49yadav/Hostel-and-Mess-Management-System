@@ -570,5 +570,448 @@ class PdfService {
       filename: 'Master_Register_${DateTime.now().toIso8601String().split('T')[0]}.pdf',
     );
   }
+
+  // 💰 Generate Clean Cashbook & Profit & Loss Statement PDF
+  static Future<Uint8List> generateCashbookPnlPdf({
+    required Map<String, dynamic> data,
+    String hostelName = 'Hostel & Mess',
+  }) async {
+    final pdf = pw.Document();
+    final cleanHostelName = _cleanPdfText(hostelName);
+    final summary = data['profitAndLossSummary'] as Map<String, dynamic>? ?? {};
+    final transactions = (data['transactions'] as List<dynamic>? ?? []);
+    final year = data['reportingYear']?.toString() ?? 'ALL_TIME';
+    final reportDate = data['reportDate']?.toString() ?? DateTime.now().toIso8601String().split('T')[0];
+
+    final totalInflow = parseFloatSafe(summary['totalInflow']);
+    final totalOutflow = parseFloatSafe(summary['totalOutflow']);
+    final netProfit = parseFloatSafe(summary['netProfitOrLoss']);
+    final rentInflow = parseFloatSafe(summary['rentInflow']);
+    final messInflow = parseFloatSafe(summary['messInflow']);
+    final depositInflow = parseFloatSafe(summary['depositInflow']);
+    final otherInflow = parseFloatSafe(summary['otherInflow']);
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        header: (pw.Context context) {
+          return pw.Container(
+            margin: const pw.EdgeInsets.only(bottom: 12),
+            padding: const pw.EdgeInsets.only(bottom: 8),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(bottom: pw.BorderSide(color: PdfColors.blue800, width: 1.5)),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      cleanHostelName,
+                      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Combined Cashbook & Profit & Loss Statement (Period: $year)',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                    ),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('Report Date: $reportDate', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                    pw.Text(
+                      'Total Txns: ${transactions.length}',
+                      style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+        footer: (pw.Context context) {
+          return pw.Container(
+            margin: const pw.EdgeInsets.only(top: 10),
+            padding: const pw.EdgeInsets.only(top: 6),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'Financial Statement • $cleanHostelName',
+                  style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+                ),
+                pw.Text(
+                  'Page ${context.pageNumber} of ${context.pagesCount}',
+                  style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+                ),
+              ],
+            ),
+          );
+        },
+        build: (pw.Context context) {
+          return [
+            // KPI Summary Cards
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 12),
+              padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                borderRadius: pw.BorderRadius.circular(6),
+                border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                children: [
+                  _buildKpiPdfItem('Total Inflow', _formatPdfCurrency(totalInflow), PdfColors.green800),
+                  _buildKpiPdfItem('Total Outflow', _formatPdfCurrency(totalOutflow), PdfColors.red800),
+                  _buildKpiPdfItem(
+                    netProfit >= 0 ? 'Net Surplus (Profit)' : 'Net Deficit (Loss)',
+                    _formatPdfCurrency(netProfit.abs()),
+                    netProfit >= 0 ? PdfColors.green900 : PdfColors.red900,
+                  ),
+                ],
+              ),
+            ),
+
+            // Inflow breakdown
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 12),
+              padding: const pw.EdgeInsets.all(8),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.blue50,
+                borderRadius: pw.BorderRadius.circular(6),
+                border: pw.Border.all(color: PdfColors.blue100, width: 0.5),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                children: [
+                  pw.Text('Rent: ${_formatPdfCurrency(rentInflow)}', style: const pw.TextStyle(fontSize: 8)),
+                  pw.Text('Mess: ${_formatPdfCurrency(messInflow)}', style: const pw.TextStyle(fontSize: 8)),
+                  pw.Text('Deposits: ${_formatPdfCurrency(depositInflow)}', style: const pw.TextStyle(fontSize: 8)),
+                  pw.Text('Other: ${_formatPdfCurrency(otherInflow)}', style: const pw.TextStyle(fontSize: 8)),
+                ],
+              ),
+            ),
+
+            // Transactions Table
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              columnWidths: const {
+                0: pw.FixedColumnWidth(24),  // #
+                1: pw.FixedColumnWidth(55),  // Date
+                2: pw.FixedColumnWidth(48),  // Type
+                3: pw.FlexColumnWidth(2.5),  // Particulars
+                4: pw.FixedColumnWidth(44),  // Mode
+                5: pw.FixedColumnWidth(60),  // Inflow
+                6: pw.FixedColumnWidth(60),  // Outflow
+              },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.blue900),
+                  children: [
+                    _buildTableHeaderCell('#'),
+                    _buildTableHeaderCell('Date'),
+                    _buildTableHeaderCell('Flow'),
+                    _buildTableHeaderCell('Particulars / Resident / Vendor'),
+                    _buildTableHeaderCell('Mode'),
+                    _buildTableHeaderCell('Inflow'),
+                    _buildTableHeaderCell('Outflow'),
+                  ],
+                ),
+                ...transactions.asMap().entries.map((entry) {
+                  final idx = entry.key + 1;
+                  final t = entry.value as Map<String, dynamic>;
+                  final date = (t['date'] ?? '').toString().split('T')[0];
+                  final type = (t['type'] ?? '').toString().toUpperCase();
+                  final party = _cleanPdfText(t['party']?.toString() ?? '');
+                  final mode = (t['paymentMode'] ?? 'CASH').toString();
+                  final inflow = parseFloatSafe(t['inflow'] ?? (type == 'INFLOW' ? t['amount'] : 0));
+                  final outflow = parseFloatSafe(t['outflow'] ?? (type == 'OUTFLOW' ? t['amount'] : 0));
+                  final isEven = idx % 2 == 0;
+
+                  return pw.TableRow(
+                    decoration: pw.BoxDecoration(
+                      color: isEven ? PdfColors.grey100 : PdfColors.white,
+                    ),
+                    children: [
+                      _buildTableCell('$idx', align: pw.TextAlign.center),
+                      _buildTableCell(date),
+                      _buildTableCell(
+                        type,
+                        bold: true,
+                        color: type == 'INFLOW' ? PdfColors.green800 : PdfColors.red800,
+                      ),
+                      _buildTableCell(party),
+                      _buildTableCell(mode, align: pw.TextAlign.center),
+                      _buildTableCell(
+                        inflow > 0 ? _formatPdfCurrency(inflow) : '-',
+                        align: pw.TextAlign.right,
+                        color: PdfColors.green800,
+                      ),
+                      _buildTableCell(
+                        outflow > 0 ? _formatPdfCurrency(outflow) : '-',
+                        align: pw.TextAlign.right,
+                        color: PdfColors.red800,
+                      ),
+                    ],
+                  );
+                }),
+              ],
+            ),
+          ];
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  // 🗄️ Generate Full Database Snapshot PDF (Scoped to Logged-in Hostel)
+  static Future<Uint8List> generateDatabaseSnapshotPdf({
+    required Map<String, dynamic> snapshot,
+    String hostelName = 'Hostel & Mess',
+  }) async {
+    final pdf = pw.Document();
+    final org = snapshot['organization'] as Map<String, dynamic>? ?? {};
+    final cleanHostelName = _cleanPdfText(org['name']?.toString() ?? hostelName);
+    final orgCode = org['code']?.toString() ?? '';
+    final city = org['city']?.toString() ?? '';
+    final phone = org['contactPhone']?.toString() ?? '';
+    final exportedAt = (snapshot['exportedAt'] ?? DateTime.now().toIso8601String()).toString().split('T')[0];
+
+    final students = (snapshot['students'] as List<dynamic>? ?? []);
+    final rooms = (snapshot['rooms'] as List<dynamic>? ?? []);
+    final payments = (snapshot['payments'] as List<dynamic>? ?? []);
+    final expenses = (snapshot['mess_expenses'] as List<dynamic>? ?? []);
+    final admins = (snapshot['admins'] as List<dynamic>? ?? []);
+
+    final activeCount = students.where((s) => (s['status'] ?? 'ACTIVE') != 'ARCHIVED').length;
+    final totalPaymentsAmt = payments.fold<double>(0, (acc, p) => acc + (parseFloatSafe(p['amount'])).toDouble());
+    final totalExpensesAmt = expenses.fold<double>(0, (acc, e) => acc + (parseFloatSafe(e['amount'])).toDouble());
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        header: (pw.Context context) {
+          return pw.Container(
+            margin: const pw.EdgeInsets.only(bottom: 12),
+            padding: const pw.EdgeInsets.only(bottom: 8),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(bottom: pw.BorderSide(color: PdfColors.indigo900, width: 1.5)),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      cleanHostelName,
+                      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Complete Database Snapshot Report • Code: $orgCode • $city',
+                      style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700),
+                    ),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('Export Date: $exportedAt', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+                    if (phone.isNotEmpty)
+                      pw.Text('Contact: $phone', style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey600)),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+        footer: (pw.Context context) {
+          return pw.Container(
+            margin: const pw.EdgeInsets.only(top: 10),
+            padding: const pw.EdgeInsets.only(top: 6),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'Confidential Database Snapshot • $cleanHostelName ($orgCode)',
+                  style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+                ),
+                pw.Text(
+                  'Page ${context.pageNumber} of ${context.pagesCount}',
+                  style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+                ),
+              ],
+            ),
+          );
+        },
+        build: (pw.Context context) {
+          return [
+            // KPI Summary Row
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 12),
+              padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.indigo50,
+                borderRadius: pw.BorderRadius.circular(6),
+                border: pw.Border.all(color: PdfColors.indigo200, width: 0.5),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                children: [
+                  _buildKpiPdfItem('Total Students', '${students.length}', PdfColors.indigo900),
+                  _buildKpiPdfItem('Active Residents', '$activeCount', PdfColors.green800),
+                  _buildKpiPdfItem('Rooms Configured', '${rooms.length}', PdfColors.blue800),
+                  _buildKpiPdfItem('Total Collections', _formatPdfCurrency(totalPaymentsAmt), PdfColors.teal900),
+                  _buildKpiPdfItem('Total Expenses', _formatPdfCurrency(totalExpensesAmt), PdfColors.red900),
+                  _buildKpiPdfItem('Admins', '${admins.length}', PdfColors.purple900),
+                ],
+              ),
+            ),
+
+            // Section 1: Students Roster
+            pw.Container(
+              margin: const pw.EdgeInsets.only(top: 4, bottom: 6),
+              child: pw.Text(
+                'STUDENT & RESIDENT ROSTER (${students.length} Records)',
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900),
+              ),
+            ),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              columnWidths: const {
+                0: pw.FixedColumnWidth(24),
+                1: pw.FlexColumnWidth(2.2),
+                2: pw.FixedColumnWidth(65),
+                3: pw.FixedColumnWidth(40),
+                4: pw.FixedColumnWidth(30),
+                5: pw.FixedColumnWidth(48),
+                6: pw.FixedColumnWidth(55),
+                7: pw.FixedColumnWidth(55),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.indigo900),
+                  children: [
+                    _buildTableHeaderCell('#'),
+                    _buildTableHeaderCell('Name'),
+                    _buildTableHeaderCell('Mobile'),
+                    _buildTableHeaderCell('Room'),
+                    _buildTableHeaderCell('Bed'),
+                    _buildTableHeaderCell('Status'),
+                    _buildTableHeaderCell('Joined'),
+                    _buildTableHeaderCell('Rent/Fee'),
+                  ],
+                ),
+                ...students.asMap().entries.map((entry) {
+                  final idx = entry.key + 1;
+                  final s = entry.value as Map<String, dynamic>;
+                  final name = _cleanPdfText(s['name']?.toString() ?? '');
+                  final phone = s['phone']?.toString() ?? '';
+                  final room = s['roomNumber']?.toString() ?? '-';
+                  final bed = s['bedNo']?.toString() ?? '-';
+                  final status = (s['status'] ?? 'ACTIVE').toString().toUpperCase();
+                  final joined = (s['admissionDate'] ?? s['createdAt'] ?? '').toString().split('T')[0];
+                  final rent = parseFloatSafe(s['agreedRent'] ?? s['totalRentAgreed'] ?? s['monthlyMessFee'] ?? 0);
+                  final isEven = idx % 2 == 0;
+
+                  return pw.TableRow(
+                    decoration: pw.BoxDecoration(
+                      color: isEven ? PdfColors.grey100 : PdfColors.white,
+                    ),
+                    children: [
+                      _buildTableCell('$idx', align: pw.TextAlign.center),
+                      _buildTableCell(name, bold: true),
+                      _buildTableCell(phone),
+                      _buildTableCell(room, align: pw.TextAlign.center),
+                      _buildTableCell(bed, align: pw.TextAlign.center),
+                      _buildTableCell(status, align: pw.TextAlign.center, color: status == 'ACTIVE' ? PdfColors.green800 : PdfColors.grey700),
+                      _buildTableCell(joined),
+                      _buildTableCell(_formatPdfCurrency(rent), align: pw.TextAlign.right),
+                    ],
+                  );
+                }),
+              ],
+            ),
+
+            // Section 2: Recent Payments Summary
+            if (payments.isNotEmpty) ...[
+              pw.SizedBox(height: 14),
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 6),
+                child: pw.Text(
+                  'RECENT PAYMENT TRANSACTIONS (${payments.length} Records)',
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900),
+                ),
+              ),
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                columnWidths: const {
+                  0: pw.FixedColumnWidth(24),
+                  1: pw.FixedColumnWidth(55),
+                  2: pw.FlexColumnWidth(2.2),
+                  3: pw.FixedColumnWidth(55),
+                  4: pw.FixedColumnWidth(50),
+                  5: pw.FixedColumnWidth(60),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.teal800),
+                    children: [
+                      _buildTableHeaderCell('#'),
+                      _buildTableHeaderCell('Date'),
+                      _buildTableHeaderCell('Resident'),
+                      _buildTableHeaderCell('Receipt'),
+                      _buildTableHeaderCell('Mode'),
+                      _buildTableHeaderCell('Amount'),
+                    ],
+                  ),
+                  ...payments.take(50).toList().asMap().entries.map((entry) {
+                    final idx = entry.key + 1;
+                    final p = entry.value as Map<String, dynamic>;
+                    final date = (p['paymentDate'] ?? p['createdAt'] ?? '').toString().split('T')[0];
+                    final student = _cleanPdfText(p['studentName']?.toString() ?? 'Student');
+                    final receipt = p['receiptNo']?.toString() ?? '-';
+                    final mode = (p['paymentMode'] ?? 'CASH').toString();
+                    final amt = parseFloatSafe(p['amount']);
+                    final isEven = idx % 2 == 0;
+
+                    return pw.TableRow(
+                      decoration: pw.BoxDecoration(color: isEven ? PdfColors.grey100 : PdfColors.white),
+                      children: [
+                        _buildTableCell('$idx', align: pw.TextAlign.center),
+                        _buildTableCell(date),
+                        _buildTableCell(student),
+                        _buildTableCell(receipt),
+                        _buildTableCell(mode, align: pw.TextAlign.center),
+                        _buildTableCell(_formatPdfCurrency(amt), align: pw.TextAlign.right, bold: true, color: PdfColors.teal900),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            ],
+          ];
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
 }
 
