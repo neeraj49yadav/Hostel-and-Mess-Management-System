@@ -12,10 +12,14 @@ import '../models/vendor.dart';
 import '../models/leave_log.dart';
 import '../models/dashboard_stats.dart';
 
+import 'network/api_client_factory.dart';
+
 class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
+
+  late final http.Client _client = createHttpClient();
 
   String? _customBaseUrl;
   String? _cachedAuthToken;
@@ -115,7 +119,7 @@ class ApiService {
     baseUrl.then((base) {
       final healthUrl = base.replaceAll(RegExp(r'/v1/?$'), '/health');
       final uri = Uri.parse(healthUrl);
-      http.get(uri).timeout(const Duration(seconds: 10)).then((_) {}).catchError((_) {});
+      _client.get(uri).timeout(const Duration(seconds: 10)).then((_) {}).catchError((_) {});
     }).catchError((_) {});
   }
 
@@ -143,6 +147,10 @@ class ApiService {
           await Future.delayed(Duration(seconds: waitSeconds));
           continue;
         }
+        final errStr = e.toString();
+        if (errStr.contains('Network is unreachable') || errStr.contains('errno = 101') || errStr.contains('SocketException')) {
+          throw Exception('Unable to connect to cloud server. Please verify your internet connection and try again.');
+        }
         rethrow;
       }
     }
@@ -157,7 +165,7 @@ class ApiService {
     }
     final headers = await _buildHeaders();
     final response = await _executeWithRetry(
-      () => http.get(uri, headers: headers).timeout(const Duration(seconds: 60)),
+      () => _client.get(uri, headers: headers).timeout(const Duration(seconds: 60)),
     );
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
@@ -172,7 +180,7 @@ class ApiService {
     final uri = Uri.parse('$base$endpoint');
     final headers = await _buildHeaders();
     final response = await _executeWithRetry(
-      () => http
+      () => _client
           .post(
             uri,
             headers: headers,
@@ -193,7 +201,7 @@ class ApiService {
     final uri = Uri.parse('$base$endpoint');
     final headers = await _buildHeaders();
     final response = await _executeWithRetry(
-      () => http
+      () => _client
           .put(
             uri,
             headers: headers,
@@ -214,7 +222,7 @@ class ApiService {
     final uri = Uri.parse('$base$endpoint');
     final headers = await _buildHeaders();
     final response = await _executeWithRetry(
-      () => http
+      () => _client
           .delete(
             uri,
             headers: headers,

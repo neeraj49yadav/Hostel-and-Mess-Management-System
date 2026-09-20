@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/navigation/app_navigator.dart';
@@ -403,40 +404,65 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> loadOrganizations() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. If currently empty, immediately restore from persistent cache so UI has real orgs right away
+    if (_availableOrganizations.isEmpty) {
+      final cachedJson = prefs.getString('cached_orgs_json');
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        try {
+          final List list = jsonDecode(cachedJson);
+          _availableOrganizations = list.map((o) => Organization.fromJson(o)).toList();
+        } catch (_) {}
+      }
+    }
+
     try {
-      _availableOrganizations = await _api.getOrganizations();
-      final prefs = await SharedPreferences.getInstance();
+      final orgs = await _api.getOrganizations();
+      if (orgs.isNotEmpty) {
+        _availableOrganizations = orgs;
+        await prefs.setString('cached_orgs_json', jsonEncode(orgs.map((o) => o.toJson()).toList()));
+      }
       final savedOrgId = prefs.getString('selected_org_id');
 
       if (savedOrgId != null && _availableOrganizations.isNotEmpty) {
         _currentOrganization = _availableOrganizations.firstWhere(
           (o) => o.id == savedOrgId,
-          orElse: () => _availableOrganizations.first,
+          orElse: () => _currentOrganization ?? _availableOrganizations.first,
         );
-      } else if (_availableOrganizations.isNotEmpty) {
+      } else if (_availableOrganizations.isNotEmpty && _currentOrganization == null) {
         _currentOrganization = _availableOrganizations.first;
-      } else {
-        _currentOrganization = null;
       }
       notifyListeners();
     } catch (_) {
-      // Offline fallback: default organization
-      _availableOrganizations = [
-        Organization(
-          id: 'org-default',
-          name: 'My Hostel & Mess',
-          code: 'HOSTEL',
-          city: 'Main Campus',
-          contactPhone: '',
-        ),
-      ];
-      _currentOrganization = _availableOrganizations.first;
+      // Offline fallback: ONLY set default if memory and persistent cache had absolutely nothing
+      if (_availableOrganizations.isEmpty) {
+        _availableOrganizations = [
+          Organization(
+            id: 'org-default',
+            name: 'My Hostel & Mess',
+            code: 'HOSTEL',
+            city: 'Main Campus',
+            contactPhone: '',
+          ),
+        ];
+        _currentOrganization ??= _availableOrganizations.first;
+      }
       notifyListeners();
     }
   }
 
   Future<void> selectOrganization(Organization org) async {
     _currentOrganization = org;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selected_org_id', org.id);
+    await prefs.setString('selected_org_code', org.code);
+    await prefs.setString('selected_org_name', org.name);
+    await prefs.setString('selected_org_city', org.city);
+    await prefs.setString('selected_org_phone', org.contactPhone);
+    if (org.logo != null && org.logo!.isNotEmpty) {
+      await prefs.setString('selected_org_logo', org.logo!);
+    }
     await _api.setSelectedOrg(org.id, org.code);
     await _loadAvailableAdmins();
     notifyListeners();
