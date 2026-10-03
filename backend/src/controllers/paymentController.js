@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { generateWhatsAppReceipt, calculateMessExpiryDate } = require('../services/expiryService');
+const { generateWhatsAppReceipt, calculateMessExpiryDate, calculateMessLedger } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 
@@ -97,13 +97,9 @@ exports.recordPayment = (req, res) => {
 
     // 2. Advance Mess Expiry deterministically
     if (finalMessAmount > 0 || feeType === 'MESS') {
-      const previousMessPayments = payments
-        .filter(p => p.studentId === studentId && (p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0)))
-        .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
-
-      const updatedTotalMessPaid = previousMessPayments + finalMessAmount;
-      const messStartDate = student.messStartDate || student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0];
-      student.messExpiryDate = calculateMessExpiryDate(messStartDate, updatedTotalMessPaid, student.monthlyMessFee || 3500);
+      const allStudentMessPayments = [...payments, newPayment];
+      const ledger = calculateMessLedger(student, allStudentMessPayments);
+      student.messExpiryDate = ledger.messExpiryDate;
 
       const monthLabel = targetMonth ? ` for ${targetMonth}` : '';
       cycleSummary.push(`Mess: ₹${finalMessAmount} paid${monthLabel} (Valid till ${student.messExpiryDate})`);
@@ -224,13 +220,10 @@ exports.deletePayment = (req, res) => {
     // If student exists and payment had mess fees, recalculate messExpiryDate
     const students = db.getCollectionForOrg('students', orgId);
     const student = students.find(s => s.id === deletedPayment.studentId);
-    if (student && student.enrolledInMess && (deletedPayment.messAmount > 0 || deletedPayment.feeType === 'MESS' || deletedPayment.feeType === 'BOTH')) {
-      const remainingMessPayments = payments
-        .filter(p => p.studentId === student.id && (p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0)))
-        .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
-
-      const messStartDate = student.messStartDate || student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0];
-      student.messExpiryDate = calculateMessExpiryDate(messStartDate, remainingMessPayments, student.monthlyMessFee || 3500);
+    if (student && (student.enrolledInMess || student.memberType === 'MESS_ONLY') && (deletedPayment.messAmount > 0 || deletedPayment.feeType === 'MESS' || deletedPayment.feeType === 'BOTH')) {
+      const remainingMessPayments = payments.filter(p => p.studentId === student.id);
+      const ledger = calculateMessLedger(student, remainingMessPayments);
+      student.messExpiryDate = ledger.messExpiryDate;
       db.saveCollectionForOrg('students', orgId, students);
     }
 

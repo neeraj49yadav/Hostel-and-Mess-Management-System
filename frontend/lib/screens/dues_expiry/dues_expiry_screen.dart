@@ -17,6 +17,8 @@ class DuesExpiryScreen extends StatefulWidget {
 
 class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  String _messSubFilter = 'ALL'; // 'ALL', 'OVERDUE', 'UPCOMING'
+  final TextEditingController _messSearchCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -30,6 +32,7 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
   @override
   void dispose() {
     _tabController.dispose();
+    _messSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -103,13 +106,8 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
         child: TabBarView(
           controller: _tabController,
           children: [
-            // Tab 1: Mess Monthly Alerts
-            _buildDuesList(
-              items: [...dash.messOverdue, ...dash.messExpiringSoon],
-              type: 'MESS',
-              emptyMessage: 'All monthly mess subscriptions are currently active!',
-              isDark: isDark,
-            ),
+            // Tab 1: Mess Monthly Alerts with Search & Overdue / Upcoming separation
+            _buildMessTab(dash, isDark),
 
             // Tab 2: Hostel Rent (Semester / Termly) Alerts
             _buildDuesList(
@@ -129,6 +127,118 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
           ],
         ),
       ),
+    );
+  }
+
+  // 🍽️ Dedicated Mess Tab with Search and Overdue/Upcoming Separation (Req 6 & 7)
+  Widget _buildMessTab(DashboardProvider dash, bool isDark) {
+    List<Student> baseList;
+    if (_messSubFilter == 'OVERDUE') {
+      baseList = dash.messOverdue;
+    } else if (_messSubFilter == 'UPCOMING') {
+      baseList = dash.messExpiringSoon;
+    } else {
+      baseList = [...dash.messOverdue, ...dash.messExpiringSoon];
+    }
+
+    final q = _messSearchCtrl.text.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? baseList
+        : baseList.where((s) {
+            return s.name.toLowerCase().contains(q) ||
+                s.phone.contains(q) ||
+                s.roomNumber.toLowerCase().contains(q) ||
+                s.mealPlanType.toLowerCase().contains(q);
+          }).toList();
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: isDark ? AppColors.surfaceDark : Colors.white,
+          child: Column(
+            children: [
+              TextField(
+                controller: _messSearchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Search mess dues by name, phone, room...',
+                  prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
+                  suffixIcon: _messSearchCtrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            setState(() {
+                              _messSearchCtrl.clear();
+                            });
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: Text('All Alerts (${dash.messOverdue.length + dash.messExpiringSoon.length})'),
+                      selected: _messSubFilter == 'ALL',
+                      selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _messSubFilter == 'ALL' ? FontWeight.bold : FontWeight.normal,
+                        color: _messSubFilter == 'ALL' ? AppColors.secondary : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                      ),
+                      onSelected: (_) => setState(() => _messSubFilter = 'ALL'),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('🔴 Overdue / Current Due (${dash.messOverdue.length})'),
+                      selected: _messSubFilter == 'OVERDUE',
+                      selectedColor: AppColors.danger.withValues(alpha: 0.2),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _messSubFilter == 'OVERDUE' ? FontWeight.bold : FontWeight.normal,
+                        color: _messSubFilter == 'OVERDUE' ? AppColors.danger : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                      ),
+                      onSelected: (_) => setState(() => _messSubFilter = 'OVERDUE'),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('🟡 Upcoming Dues (${dash.messExpiringSoon.length})'),
+                      selected: _messSubFilter == 'UPCOMING',
+                      selectedColor: Colors.amber.withValues(alpha: 0.2),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _messSubFilter == 'UPCOMING' ? FontWeight.bold : FontWeight.normal,
+                        color: _messSubFilter == 'UPCOMING' ? Colors.orange.shade800 : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                      ),
+                      onSelected: (_) => setState(() => _messSubFilter = 'UPCOMING'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _buildDuesList(
+            items: filtered,
+            type: 'MESS',
+            emptyMessage: _messSubFilter == 'OVERDUE'
+                ? 'No overdue mess subscriptions! All clear.'
+                : (_messSubFilter == 'UPCOMING'
+                    ? 'No upcoming mess renewals in the next 5 days.'
+                    : 'All monthly mess subscriptions are currently active!'),
+            isDark: isDark,
+          ),
+        ),
+      ],
     );
   }
 
@@ -214,6 +324,17 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                                     color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
                                   ),
                                 ),
+                                if (isMessType && student.mealPlanType.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '🍽️ ${student.mealPlanType}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark ? AppColors.secondaryLight : AppColors.secondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

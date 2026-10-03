@@ -38,13 +38,21 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
   int _cycleDay = 1;
   bool _isSubmitting = false;
 
+  // Meal frequency & plate options (Req 2)
+  int _mealsPerDay = 3;
+  List<String> _mealSlots = ['Morning', 'Noon', 'Evening'];
+
+  // Manual / Custom Plan Validity (Req 3)
+  String _planValidityType = 'MONTHLY'; // 'MONTHLY' or 'CUSTOM_DAYS'
+  final _customDaysController = TextEditingController(text: '15');
+
   // Curated student avatar headshots for 1-tap selection
   final List<String> _avatarPresets = [
     'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&auto=format&fit=crop&q=80',
     'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=80',
     'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
   ];
 
@@ -64,6 +72,12 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
       _startDate = DateTime.tryParse((m.messStartDate != null && m.messStartDate!.isNotEmpty) ? m.messStartDate! : m.admissionDate) ?? DateTime.now();
       _cycleDay = m.cycleDay > 0 ? m.cycleDay : 1;
       _selectedHostelStudentId = m.isHostelResident ? m.id : null;
+      _mealsPerDay = m.mealsPerDay > 0 ? m.mealsPerDay : 3;
+      _mealSlots = m.mealSlots.isNotEmpty ? List<String>.from(m.mealSlots) : ['Morning', 'Noon', 'Evening'];
+      _planValidityType = m.planValidityType.isNotEmpty ? m.planValidityType : 'MONTHLY';
+      if (m.planValidityDays != null && m.planValidityDays! > 0) {
+        _customDaysController.text = m.planValidityDays.toString();
+      }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<HostelProvider>().fetchStudents();
@@ -98,6 +112,7 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
     _photoUrlController.dispose();
     _feeController.dispose();
     _notesController.dispose();
+    _customDaysController.dispose();
     super.dispose();
   }
 
@@ -322,6 +337,11 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
       'admissionDate': _startDate.toIso8601String().split('T')[0],
       'messStartDate': _startDate.toIso8601String().split('T')[0],
       'cycleDay': _cycleDay,
+      'mealsPerDay': _mealsPerDay,
+      'mealPlanType': _mealsPerDay == 1 ? '1 Meal / Day' : (_mealsPerDay == 2 ? '2 Meals / Day' : '3 Meals / Day (Full)'),
+      'mealSlots': _mealSlots,
+      'planValidityType': _planValidityType,
+      'planValidityDays': _planValidityType == 'CUSTOM_DAYS' ? (int.tryParse(_customDaysController.text) ?? 15) : null,
       'notes': _notesController.text.trim(),
       'adminName': auth.currentAdmin?.name ?? 'Mess In-charge',
     };
@@ -653,7 +673,227 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
               const SizedBox(height: 14),
             ],
 
-            const Text('💵 Monthly Mess Subscription', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            // 🍽️ Section: Daily Meals / Plates Selection (Req 2)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.surfaceDark : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? AppColors.borderDark : AppColors.borderLight),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.restaurant, color: AppColors.secondary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Daily Meals / Plates ($_mealsPerDay Plate${_mealsPerDay > 1 ? 's' : ''}/Day)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Select daily meal frequency and specific meal slots:',
+                    style: TextStyle(fontSize: 12, color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Meal count selector (1, 2, 3 plates)
+                  Row(
+                    children: [1, 2, 3].map((count) {
+                      final isSelected = _mealsPerDay == count;
+                      final label = count == 1
+                          ? '1 Meal'
+                          : (count == 2 ? '2 Meals' : '3 Meals (Full)');
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: ChoiceChip(
+                            label: Text(label, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                            selected: isSelected,
+                            selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                            onSelected: (_) {
+                              setState(() {
+                                _mealsPerDay = count;
+                                if (count == 1) {
+                                  _mealSlots = ['Noon'];
+                                } else if (count == 2) {
+                                  _mealSlots = ['Noon', 'Evening'];
+                                } else if (count == 3) {
+                                  _mealSlots = ['Morning', 'Noon', 'Evening'];
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Meal slot checkboxes / chips
+                  const Text('Active Meal Slots:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      {'name': 'Morning', 'label': '☀️ Morning (Breakfast)'},
+                      {'name': 'Noon', 'label': '🍛 Noon (Lunch)'},
+                      {'name': 'Evening', 'label': '🌙 Evening (Dinner)'},
+                    ].map((slot) {
+                      final slotName = slot['name']!;
+                      final slotLabel = slot['label']!;
+                      final isChecked = _mealSlots.contains(slotName);
+                      return FilterChip(
+                        label: Text(slotLabel, style: TextStyle(fontSize: 12, fontWeight: isChecked ? FontWeight.bold : FontWeight.normal)),
+                        selected: isChecked,
+                        selectedColor: AppColors.secondary.withValues(alpha: 0.2),
+                        checkmarkColor: AppColors.secondary,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              if (!_mealSlots.contains(slotName)) _mealSlots.add(slotName);
+                            } else {
+                              if (_mealSlots.length > 1) {
+                                _mealSlots.remove(slotName);
+                              }
+                            }
+                            _mealsPerDay = _mealSlots.length;
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 📅 Section: Plan Validity Duration (Req 3)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.surfaceDark : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? AppColors.borderDark : AppColors.borderLight),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_month, color: AppColors.secondary, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Plan Validity / Duration',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Choose regular monthly subscription or custom validity for short stay:',
+                    style: TextStyle(fontSize: 12, color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight),
+                  ),
+                  const SizedBox(height: 10),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('🗓️ Monthly (30 Days)', style: TextStyle(fontSize: 12)),
+                          selected: _planValidityType == 'MONTHLY',
+                          selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                          onSelected: (_) => setState(() => _planValidityType = 'MONTHLY'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('⏱️ Custom Days', style: TextStyle(fontSize: 12)),
+                          selected: _planValidityType == 'CUSTOM_DAYS',
+                          selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                          onSelected: (_) => setState(() => _planValidityType = 'CUSTOM_DAYS'),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (_planValidityType == 'CUSTOM_DAYS') ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _customDaysController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Valid Days Count *',
+                              hintText: 'e.g. 5, 10, 15',
+                              prefixIcon: Icon(Icons.timer_outlined),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Wrap(
+                          spacing: 4,
+                          children: [5, 10, 15, 20].map((d) {
+                            return ActionChip(
+                              label: Text('$d d', style: const TextStyle(fontSize: 11)),
+                              onPressed: () {
+                                setState(() {
+                                  _customDaysController.text = d.toString();
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Builder(
+                              builder: (_) {
+                                final days = int.tryParse(_customDaysController.text) ?? 15;
+                                final endDate = _startDate.add(Duration(days: days));
+                                return Text(
+                                  'Active for $days days: Valid until ${endDate.day}/${endDate.month}/${endDate.year}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 💵 Fee & Billing Cycle
+            Text(
+              _planValidityType == 'CUSTOM_DAYS'
+                  ? '💵 Custom Mess Subscription'
+                  : '💵 Monthly Mess Subscription',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
             const SizedBox(height: 10),
 
             Row(
@@ -662,8 +902,10 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
                   child: TextFormField(
                     controller: _feeController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Monthly Mess Fee (₹) *',
+                    decoration: InputDecoration(
+                      labelText: _planValidityType == 'CUSTOM_DAYS'
+                          ? 'Mess Fee for ${_customDaysController.text.trim()} Days (₹) *'
+                          : 'Monthly Mess Fee (₹) *',
                       prefixText: '₹ ',
                     ),
                     validator: (v) => v == null || v.trim().isEmpty ? 'Fee required' : null,
@@ -700,21 +942,23 @@ class _AddMessMemberScreenState extends State<AddMessMemberScreen> {
             ),
             const SizedBox(height: 12),
 
-            DropdownButtonFormField<int>(
-              value: _cycleDay,
-              decoration: const InputDecoration(
-                labelText: 'Monthly Renewal Day',
-                prefixIcon: Icon(Icons.event_repeat),
-                helperText: 'e.g. Day 5 of every month',
+            if (_planValidityType == 'MONTHLY') ...[
+              DropdownButtonFormField<int>(
+                value: _cycleDay,
+                decoration: const InputDecoration(
+                  labelText: 'Monthly Renewal Day',
+                  prefixIcon: Icon(Icons.event_repeat),
+                  helperText: 'e.g. Day 5 of every month',
+                ),
+                items: List.generate(31, (i) => i + 1).map((d) {
+                  return DropdownMenuItem(value: d, child: Text('Day $d of every month'));
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => _cycleDay = val);
+                },
               ),
-              items: List.generate(31, (i) => i + 1).map((d) {
-                return DropdownMenuItem(value: d, child: Text('Day $d of every month'));
-              }).toList(),
-              onChanged: (val) {
-                if (val != null) setState(() => _cycleDay = val);
-              },
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
+            ],
 
             TextFormField(
               controller: _notesController,

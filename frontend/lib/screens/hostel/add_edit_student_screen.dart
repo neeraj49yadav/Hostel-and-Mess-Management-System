@@ -39,6 +39,14 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
   DateTime _messStartDate = DateTime.now();
   bool _isSubmitting = false;
 
+  // Meal frequency & plate options (Req 2)
+  int _mealsPerDay = 3;
+  List<String> _mealSlots = ['Morning', 'Noon', 'Evening'];
+
+  // Manual / Custom Plan Validity (Req 3)
+  String _planValidityType = 'MONTHLY'; // 'MONTHLY' or 'CUSTOM_DAYS'
+  final _customDaysController = TextEditingController(text: '15');
+
   // Curated student avatar headshots for 1-tap selection
   final List<String> _avatarPresets = [
     'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&auto=format&fit=crop&q=80',
@@ -68,6 +76,12 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
       _cycleDay = s.cycleDay;
       _rentTermMonths = s.rentTermMonths;
       _enrolledInMess = s.enrolledInMess;
+      _mealsPerDay = s.mealsPerDay > 0 ? s.mealsPerDay : 3;
+      _mealSlots = s.mealSlots.isNotEmpty ? List<String>.from(s.mealSlots) : ['Morning', 'Noon', 'Evening'];
+      _planValidityType = s.planValidityType.isNotEmpty ? s.planValidityType : 'MONTHLY';
+      if (s.planValidityDays != null && s.planValidityDays! > 0) {
+        _customDaysController.text = s.planValidityDays.toString();
+      }
       if (s.admissionDate.isNotEmpty) {
         _admissionDate = DateTime.tryParse(s.admissionDate) ?? DateTime.now();
       }
@@ -109,6 +123,7 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
     _messFeeController.dispose();
     _rentTermAmountController.dispose();
     _notesController.dispose();
+    _customDaysController.dispose();
     super.dispose();
   }
 
@@ -328,6 +343,11 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
       'cycleDay': _cycleDay,
       'enrolledInMess': _enrolledInMess,
       'monthlyMessFee': _enrolledInMess ? (double.tryParse(_messFeeController.text) ?? 3500.0) : 0.0,
+      'mealsPerDay': _enrolledInMess ? _mealsPerDay : 3,
+      'mealPlanType': _enrolledInMess ? (_mealsPerDay == 1 ? '1 Meal / Day' : (_mealsPerDay == 2 ? '2 Meals / Day' : '3 Meals / Day (Full)')) : null,
+      'mealSlots': _enrolledInMess ? _mealSlots : null,
+      'planValidityType': _enrolledInMess ? _planValidityType : 'MONTHLY',
+      'planValidityDays': (_enrolledInMess && _planValidityType == 'CUSTOM_DAYS') ? (int.tryParse(_customDaysController.text) ?? 15) : null,
       'totalRentAgreed': double.tryParse(_rentTermAmountController.text) ?? 50000.0,
       'rentTermMonths': _rentTermMonths,
       'rentAmountPerTerm': double.tryParse(_rentTermAmountController.text) ?? 50000.0,
@@ -629,13 +649,156 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
                     },
                   ),
                   if (_enrolledInMess) ...[
+                    const SizedBox(height: 12),
+
+                    // 🍽️ Daily Meals / Plates Selection
+                    Text(
+                      'Daily Meals / Plates ($_mealsPerDay Plate${_mealsPerDay > 1 ? 's' : ''}/Day)',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [1, 2, 3].map((count) {
+                        final isSelected = _mealsPerDay == count;
+                        final label = count == 1 ? '1 Meal' : (count == 2 ? '2 Meals' : '3 Meals (Full)');
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: ChoiceChip(
+                              label: Text(label, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                              selected: isSelected,
+                              selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                              onSelected: (_) {
+                                setState(() {
+                                  _mealsPerDay = count;
+                                  if (count == 1) {
+                                    _mealSlots = ['Noon'];
+                                  } else if (count == 2) {
+                                    _mealSlots = ['Noon', 'Evening'];
+                                  } else if (count == 3) {
+                                    _mealSlots = ['Morning', 'Noon', 'Evening'];
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                     const SizedBox(height: 8),
+
+                    // Meal slots
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        {'name': 'Morning', 'label': '☀️ Morning'},
+                        {'name': 'Noon', 'label': '🍛 Noon'},
+                        {'name': 'Evening', 'label': '🌙 Evening'},
+                      ].map((slot) {
+                        final slotName = slot['name']!;
+                        final slotLabel = slot['label']!;
+                        final isChecked = _mealSlots.contains(slotName);
+                        return FilterChip(
+                          label: Text(slotLabel, style: TextStyle(fontSize: 11, fontWeight: isChecked ? FontWeight.bold : FontWeight.normal)),
+                          selected: isChecked,
+                          selectedColor: AppColors.secondary.withValues(alpha: 0.2),
+                          checkmarkColor: AppColors.secondary,
+                          onSelected: (selected) {
+                            setState(() {
+                              if (selected) {
+                                if (!_mealSlots.contains(slotName)) _mealSlots.add(slotName);
+                              } else {
+                                if (_mealSlots.length > 1) {
+                                  _mealSlots.remove(slotName);
+                                }
+                              }
+                              _mealsPerDay = _mealSlots.length;
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 📅 Plan Validity Type (Monthly vs Custom Days)
+                    const Text('Plan Validity / Duration', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Text('🗓️ Monthly (30 Days)', style: TextStyle(fontSize: 11)),
+                            selected: _planValidityType == 'MONTHLY',
+                            selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                            onSelected: (_) => setState(() => _planValidityType = 'MONTHLY'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Text('⏱️ Custom Days', style: TextStyle(fontSize: 11)),
+                            selected: _planValidityType == 'CUSTOM_DAYS',
+                            selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                            onSelected: (_) => setState(() => _planValidityType = 'CUSTOM_DAYS'),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    if (_planValidityType == 'CUSTOM_DAYS') ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _customDaysController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Valid Days Count *',
+                                hintText: 'e.g. 5, 10, 15',
+                                prefixIcon: Icon(Icons.timer_outlined),
+                              ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Wrap(
+                            spacing: 4,
+                            children: [5, 10, 15, 20].map((d) {
+                              return ActionChip(
+                                label: Text('$d d', style: const TextStyle(fontSize: 11)),
+                                onPressed: () {
+                                  setState(() {
+                                    _customDaysController.text = d.toString();
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Builder(
+                        builder: (_) {
+                          final days = int.tryParse(_customDaysController.text) ?? 15;
+                          final endDate = _messStartDate.add(Duration(days: days));
+                          return Text(
+                            'Active for $days days: Valid till ${endDate.day}/${endDate.month}/${endDate.year}',
+                            style: const TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.w600),
+                          );
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+
                     TextFormField(
                       controller: _messFeeController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Monthly Mess Fee (₹) *',
-                        prefixIcon: Icon(Icons.restaurant_outlined),
+                      decoration: InputDecoration(
+                        labelText: _planValidityType == 'CUSTOM_DAYS'
+                            ? 'Mess Fee for ${_customDaysController.text.trim()} Days (₹) *'
+                            : 'Monthly Mess Fee (₹) *',
+                        prefixIcon: const Icon(Icons.restaurant_outlined),
                       ),
                       validator: (v) {
                         if (_enrolledInMess && (v == null || v.trim().isEmpty)) {
@@ -649,7 +812,11 @@ class _AddEditStudentScreenState extends State<AddEditStudentScreen> {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.restaurant_menu_outlined),
                       title: const Text('Mess Joining Date', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      subtitle: Text('${_messStartDate.day}/${_messStartDate.month}/${_messStartDate.year} (Initial plan active for 1 month)'),
+                      subtitle: Text(
+                        _planValidityType == 'CUSTOM_DAYS'
+                            ? '${_messStartDate.day}/${_messStartDate.month}/${_messStartDate.year} (Custom ${_customDaysController.text.trim()} Days Plan)'
+                            : '${_messStartDate.day}/${_messStartDate.month}/${_messStartDate.year} (Initial plan active for 1 month)',
+                      ),
                       trailing: const Icon(Icons.edit_calendar_outlined),
                       onTap: () async {
                         final picked = await showDatePicker(

@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { calculateCycleStatus, calculateMessExpiryDate, generateWhatsAppReminder } = require('../services/expiryService');
+const { calculateCycleStatus, calculateMessLedger, generateWhatsAppReminder } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 const storageService = require('../services/storageService');
@@ -9,67 +9,128 @@ const storageService = require('../services/storageService');
 exports.getMessMembers = (req, res) => {
   try {
     const orgId = extractOrgId(req);
-    const { type, status, search } = req.query; // type: 'ALL', 'OUTSIDE_ONLY', 'HOSTEL_ONLY'
-    const allStudents = db.getCollectionForOrg('students', orgId).filter(s => s.status !== 'ARCHIVED');
+    const { type, status, search } = req.query; // type: 'ALL', 'OUTSIDE_ONLY', 'HOSTEL_ONLY', 'REMOVED', 'OVERDUE', 'UPCOMING'
+    let allStudents = db.getCollectionForOrg('students', orgId).filter(s => s.status !== 'ARCHIVED');
+    const payments = db.getCollectionForOrg('payments', orgId);
 
     const isOutsider = s => s.memberType === 'MESS_ONLY' || s.isMessOnly === true || !s.roomId;
-    const isHostelite = s => (s.memberType === 'HOSTEL_RESIDENT' || !!s.roomId) && s.enrolledInMess !== false;
+    const isHostelite = s => (s.memberType === 'HOSTEL_RESIDENT' || !!s.roomId) && (s.enrolledInMess !== false || s.status === 'MESS_AUTO_REMOVED');
 
-    // Filter to only students who are enrolled in mess or are mess-only
-    const messStudents = allStudents.filter(s => isOutsider(s) || isHostelite(s));
+    // Filter to students associated with mess
+    const messCandidates = allStudents.filter(s => isOutsider(s) || isHostelite(s));
 
-    // True total counts computed before filter is applied
-    const totalAllCount = messStudents.length;
-    const totalOutsideCount = messStudents.filter(isOutsider).length;
-    const totalHostelCount = messStudents.filter(s => !isOutsider(s)).length;
+    // 🛡️ Auto-remove check after 60 days of non-payment (Requirement 4)
+    let dbChanged = false;
+    messCandidates.forEach(s => {
+      if (s.status !== 'MESS_AUTO_REMOVED' && s.status !== 'REMOVED_AUTO') {
+        const studentPayments = payments.filter(p => p.studentId === s.id);
+        const ledger = calculateMessLedger(s, studentPayments);
+        if (ledger.isEligibleForAutoRemove) {
+          s.status = 'MESS_AUTO_REMOVED';
+          s.autoRemovedAt = new Date().toISOString();
+          s.autoRemoveReason = `Auto-removed: Overdue by ${Math.abs(ledger.messDaysRemaining)} days without continuous payment`;
+          if (s.memberType === 'HOSTEL_RESIDENT') {
+            s.enrolledInMess = false;
+          }
+          dbChanged = true;
+          db.upsertMasterRegister(s, orgId, { status: 'MESS_AUTO_REMOVED', exitReason: s.autoRemoveReason });
+        }
+      }
+    });
 
-    let filtered = [...messStudents];
+    if (dbChanged) {
+      db.saveCollectionForOrg('students', orgId, allStudents);
+    }
 
-    if (type === 'OUTSIDE_ONLY') {
-      filtered = filtered.filter(isOutsider);
+    // Split active vs removed members
+    const removedMembers = messCandidates.filter(s => s.status === 'MESS_AUTO_REMOVED' || s.status === 'REMOVED_AUTO' || s.autoRemovedAt != null);
+    const activeMessStudents = messCandidates.filter(s => s.status !== 'MESS_AUTO_REMOVED' && s.status !== 'REMOVED_AUTO' && !s.autoRemovedAt);
+
+    // True total counts computed before query filter is applied
+    const totalAllCount = activeMessStudents.length;
+    const totalOutsideCount = activeMessStudents.filter(isOutsider).length;
+    const totalHostelCount = activeMessStudents.filter(s => !isOutsider(s)).length;
+    const removedCount = removedMembers.length;
+
+    let targetList = [...activeMessStudents];
+
+    if (type === 'REMOVED') {
+      targetList = [...removedMembers];
+    } else if (type === 'OUTSIDE_ONLY') {
+      targetList = targetList.filter(isOutsider);
     } else if (type === 'HOSTEL_ONLY') {
-      filtered = filtered.filter(s => !isOutsider(s));
+      targetList = targetList.filter(s => !isOutsider(s));
+    }
+
+    // Enrich each student with accurate Mess Ledger
+    const enriched = targetList.map(s => {
+      const studentPayments = payments.filter(p => p.studentId === s.id);
+      const ledger = calculateMessLedger(s, studentPayments);
+      return {
+        ...s,
+        monthlyMessFee: ledger.monthlyMessFee,
+        totalMessPaid: ledger.totalMessPaid,
+        totalMessBilled: ledger.totalMessBilled || (ledger.totalMessPaid + ledger.messBalanceDue),
+        messBalanceDue: ledger.messBalanceDue,
+        messExpiryDate: ledger.messExpiryDate,
+        messDynamicStatus: ledger.messDynamicStatus,
+        statusLabel: ledger.messStatusLabel,
+        daysRemaining: ledger.messDaysRemaining,
+        isOverdueMess: ledger.isOverdue,
+        isUpcomingMess: ledger.isUpcoming,
+        isAutoRemoved: s.status === 'MESS_AUTO_REMOVED' || s.status === 'REMOVED_AUTO' || !!s.autoRemovedAt,
+        autoRemovedAt: s.autoRemovedAt,
+        autoRemoveReason: s.autoRemoveReason,
+        mealsPerDay: s.mealsPerDay || 3,
+        mealPlanType: s.mealPlanType || (s.mealsPerDay === 1 ? '1 Meal / Day' : (s.mealsPerDay === 2 ? '2 Meals / Day' : '3 Meals / Day (Full)')),
+        mealSlots: s.mealSlots || ['Morning', 'Noon', 'Evening'],
+        planValidityType: s.planValidityType || 'MONTHLY',
+        planValidityDays: s.planValidityDays
+      };
+    });
+
+    // Counts for Overdue and Upcoming
+    const overdueCount = activeMessStudents.map(s => calculateMessLedger(s, payments.filter(p => p.studentId === s.id))).filter(l => l.isOverdue).length;
+    const upcomingCount = activeMessStudents.map(s => calculateMessLedger(s, payments.filter(p => p.studentId === s.id))).filter(l => l.isUpcoming).length;
+
+    let result = enriched;
+
+    // Filter by OVERDUE / UPCOMING if requested
+    if (type === 'OVERDUE') {
+      result = result.filter(s => s.isOverdueMess);
+    } else if (type === 'UPCOMING') {
+      result = result.filter(s => s.isUpcomingMess);
     }
 
     // Status filter
     if (status && status !== 'ALL') {
-      filtered = filtered.filter(s => {
-        const cs = calculateCycleStatus(s.messExpiryDate, 5);
-        return cs.status === status;
-      });
+      result = result.filter(s => s.messDynamicStatus === status);
     }
 
     // Search filter
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(s =>
-        s.name.toLowerCase().includes(q) ||
-        s.phone.includes(q) ||
-        (s.roomNumber && s.roomNumber.toLowerCase().includes(q))
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(s =>
+        (s.name && s.name.toLowerCase().includes(q)) ||
+        (s.phone && s.phone.includes(q)) ||
+        (s.roomNumber && s.roomNumber.toLowerCase().includes(q)) ||
+        (s.mealPlanType && s.mealPlanType.toLowerCase().includes(q))
       );
     }
 
-    // Enrich with dynamic mess expiry status
-    const enriched = filtered.map(s => {
-      const cycle = calculateCycleStatus(s.messExpiryDate, 5);
-      return {
-        ...s,
-        dynamicStatus: cycle.status,
-        statusLabel: cycle.label,
-        daysRemaining: cycle.daysDiff
-      };
-    });
-
     res.json({
       success: true,
-      count: enriched.length,
+      count: result.length,
       totalCount: totalAllCount,
       totalAllCount: totalAllCount,
       outsideCount: totalOutsideCount,
       totalOutsideCount: totalOutsideCount,
       hostelCount: totalHostelCount,
       totalHostelCount: totalHostelCount,
-      data: enriched
+      removedCount: removedCount,
+      overdueCount: overdueCount,
+      upcomingCount: upcomingCount,
+      data: result
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -92,6 +153,11 @@ exports.createMessMember = async (req, res) => {
       admissionDate,
       messStartDate,
       cycleDay,
+      mealsPerDay = 3,
+      mealPlanType,
+      mealSlots = ['Morning', 'Noon', 'Evening'],
+      planValidityType = 'MONTHLY',
+      planValidityDays,
       notes,
       adminName
     } = req.body;
@@ -102,8 +168,17 @@ exports.createMessMember = async (req, res) => {
     const mStartDate = messStartDate || admDate;
     const cDay = cycleDay ? parseInt(cycleDay) : new Date(mStartDate).getDate();
 
-    // Initial 1 month validity plan granted at registration
-    const messExpiryDateStr = calculateMessExpiryDate(mStartDate, 0, fee);
+    // Validity calculation
+    let messExpiryDateStr;
+    if (planValidityType === 'CUSTOM_DAYS' && planValidityDays) {
+      const expDate = new Date(mStartDate);
+      expDate.setDate(expDate.getDate() + parseInt(planValidityDays));
+      messExpiryDateStr = expDate.toISOString().split('T')[0];
+    } else {
+      const expDate = new Date(mStartDate);
+      expDate.setMonth(expDate.getMonth() + 1);
+      messExpiryDateStr = expDate.toISOString().split('T')[0];
+    }
 
     // ☁️ Offload photo to Supabase Storage if Base64
     const storedPhotoUrl = await storageService.processImage(photoUrl, 'members');
@@ -118,6 +193,15 @@ exports.createMessMember = async (req, res) => {
       students[index].enrolledInMess = true;
       students[index].monthlyMessFee = fee;
       students[index].messStartDate = mStartDate;
+      students[index].mealsPerDay = parseInt(mealsPerDay) || 3;
+      students[index].mealPlanType = mealPlanType || (parseInt(mealsPerDay) === 1 ? '1 Meal / Day' : (parseInt(mealsPerDay) === 2 ? '2 Meals / Day' : '3 Meals / Day (Full)'));
+      students[index].mealSlots = Array.isArray(mealSlots) ? mealSlots : ['Morning', 'Noon', 'Evening'];
+      students[index].planValidityType = planValidityType || 'MONTHLY';
+      students[index].planValidityDays = planValidityDays ? parseInt(planValidityDays) : null;
+      students[index].status = students[index].status === 'MESS_AUTO_REMOVED' ? 'ACTIVE' : students[index].status;
+      students[index].autoRemovedAt = null;
+      students[index].autoRemoveReason = null;
+
       if (storedPhotoUrl && storedPhotoUrl.trim()) {
         students[index].photoUrl = storedPhotoUrl.trim();
       }
@@ -137,7 +221,7 @@ exports.createMessMember = async (req, res) => {
       logAudit({
         req,
         action: 'ENROLL_MESS_HOSTELITE',
-        details: `Enrolled resident ${students[index].name} (Room ${students[index].roomNumber}) into Mess at ₹${fee}/mo starting ${mStartDate}`,
+        details: `Enrolled resident ${students[index].name} (Room ${students[index].roomNumber}) into Mess at ₹${fee}/mo starting ${mStartDate} (${students[index].mealPlanType})`,
         adminName
       });
 
@@ -171,6 +255,11 @@ exports.createMessMember = async (req, res) => {
       cycleDay: cDay,
       monthlyMessFee: fee,
       messExpiryDate: messExpiryDateStr,
+      mealsPerDay: parseInt(mealsPerDay) || 3,
+      mealPlanType: mealPlanType || (parseInt(mealsPerDay) === 1 ? '1 Meal / Day' : (parseInt(mealsPerDay) === 2 ? '2 Meals / Day' : '3 Meals / Day (Full)')),
+      mealSlots: Array.isArray(mealSlots) ? mealSlots : ['Morning', 'Noon', 'Evening'],
+      planValidityType: planValidityType || 'MONTHLY',
+      planValidityDays: planValidityDays ? parseInt(planValidityDays) : null,
       rentTermMonths: 0,
       rentAmountPerTerm: 0,
       rentExpiryDate: null,
@@ -188,7 +277,7 @@ exports.createMessMember = async (req, res) => {
     logAudit({
       req,
       action: 'ADD_MESS_MEMBER',
-      details: `Enrolled outside mess member ${newMember.name} (Phone: ${newMember.phone}) at ₹${newMember.monthlyMessFee}/mo starting ${newMember.messStartDate}`,
+      details: `Enrolled outside mess member ${newMember.name} (Phone: ${newMember.phone}) at ₹${newMember.monthlyMessFee}/mo (${newMember.mealPlanType}) starting ${newMember.messStartDate}`,
       adminName
     });
 
@@ -303,6 +392,64 @@ exports.unenrollMessMember = (req, res) => {
     res.json({
       success: true,
       message: `Resident ${student.name} unenrolled from Mess successfully (stays in hostel room)`,
+      data: student
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Restore / Recover Removed Mess Member (Requirement 4)
+exports.restoreMessMember = (req, res) => {
+  try {
+    const orgId = extractOrgId(req);
+    const { id } = req.params;
+    const adminName = (req.body && req.body.adminName) || (req.admin && req.admin.name) || 'Admin';
+
+    let students = db.getCollectionForOrg('students', orgId);
+    let index = students.findIndex(s => s.id === id);
+    let student = index !== -1 ? students[index] : null;
+
+    // If not found in active students array, check master register
+    if (!student) {
+      const master = db.getCollectionForOrg('master_register', orgId);
+      const mRecord = master.find(m => m.id === id);
+      if (mRecord) {
+        student = { ...mRecord, status: 'ACTIVE', enrolledInMess: true };
+        students.push(student);
+        index = students.length - 1;
+      }
+    }
+
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Removed mess member not found to restore' });
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+    student.status = 'ACTIVE';
+    student.enrolledInMess = true;
+    student.autoRemovedAt = null;
+    student.autoRemoveReason = null;
+    student.messStartDate = todayStr;
+    student.messExpiryDate = nextMonth.toISOString().split('T')[0];
+    student.updatedAt = new Date().toISOString();
+
+    db.saveCollectionForOrg('students', orgId, students);
+    db.upsertMasterRegister(student, orgId, { status: 'ACTIVE' });
+
+    logAudit({
+      req,
+      action: 'RESTORE_MESS_MEMBER',
+      details: `Restored mess member ${student.name} (Phone: ${student.phone}) back to active status starting ${todayStr}`,
+      adminName
+    });
+
+    res.json({
+      success: true,
+      message: `Member ${student.name} restored to active mess subscription successfully!`,
       data: student
     });
   } catch (err) {

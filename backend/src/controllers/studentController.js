@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { calculateCycleStatus, calculateElapsedMessCycles, calculateMessExpiryDate, generateWhatsAppReminder } = require('../services/expiryService');
+const { calculateCycleStatus, calculateMessLedger, generateWhatsAppReminder } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 const storageService = require('../services/storageService');
@@ -19,42 +19,8 @@ function enrichStudent(student, preloadedPayments) {
 
   const rentBalanceDue = Math.max(0, totalRentAgreed - totalRentPaid);
 
-  const totalMessPaid = payments
-    .filter(p => p.feeType === 'MESS' || (p.feeType === 'BOTH' && p.messAmount > 0))
-    .reduce((sum, p) => sum + (parseFloat(p.messAmount) || (p.feeType === 'MESS' ? parseFloat(p.amount) : 0)), 0);
-
-  // Mess Dues & Expiry Deterministic Calculation
-  const monthlyMessFee = parseFloat(student.monthlyMessFee) || 3500;
-  let messBalanceDue = 0;
-  let computedMessExpiry = student.messExpiryDate;
-  const messStartDate = student.messStartDate || (student.enrolledInMess ? (student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0]) : null);
-
-  if (student.enrolledInMess && messStartDate) {
-    computedMessExpiry = calculateMessExpiryDate(messStartDate, totalMessPaid, monthlyMessFee);
-    const elapsedCycles = calculateElapsedMessCycles(messStartDate);
-    const totalMessBilled = elapsedCycles * monthlyMessFee;
-    messBalanceDue = Math.max(0, totalMessBilled - totalMessPaid);
-  }
-
-  const messCycleStatus = calculateCycleStatus(computedMessExpiry, 5);
-  let messDynamicStatus = 'ACTIVE';
-  let messStatusLabel = '';
-
-  if (!student.enrolledInMess) {
-    messDynamicStatus = 'ACTIVE';
-    messStatusLabel = 'Not Enrolled';
-  } else if (messBalanceDue > 0) {
-    if (messCycleStatus.status === 'EXPIRED') {
-      messDynamicStatus = 'EXPIRED';
-      messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Overdue)`;
-    } else {
-      messDynamicStatus = 'EXPIRING_SOON';
-      messStatusLabel = `₹${messBalanceDue.toFixed(0)} Due (Month Due)`;
-    }
-  } else {
-    messDynamicStatus = messCycleStatus.status;
-    messStatusLabel = messCycleStatus.label;
-  }
+  // 🍽️ Accurate Mess Ledger Calculation (Supports plan change rollover & eliminates false overdue)
+  const messLedger = calculateMessLedger(student, payments);
 
   let rentDynamicStatus = 'ACTIVE';
   let rentStatusLabel = '';
@@ -80,11 +46,11 @@ function enrichStudent(student, preloadedPayments) {
 
   const rentDaysRemaining = rentBalanceDue > 0 ? -1 : 999;
 
-  // Overall status: if mess overdue or rent unpaid -> EXPIRED / EXPIRING_SOON
+  // Overall status resolution
   let dynamicStatus = 'ACTIVE';
-  if ((student.enrolledInMess && (messDynamicStatus === 'EXPIRED' || messBalanceDue > 0)) || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRED')) {
-    dynamicStatus = (messDynamicStatus === 'EXPIRED' || rentDynamicStatus === 'EXPIRED') ? 'EXPIRED' : 'EXPIRING_SOON';
-  } else if ((student.enrolledInMess && messDynamicStatus === 'EXPIRING_SOON') || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRING_SOON')) {
+  if ((student.enrolledInMess && messLedger.isOverdue) || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRED')) {
+    dynamicStatus = 'EXPIRED';
+  } else if ((student.enrolledInMess && messLedger.isUpcoming) || (student.memberType === 'HOSTEL_RESIDENT' && rentDynamicStatus === 'EXPIRING_SOON')) {
     dynamicStatus = 'EXPIRING_SOON';
   }
 
@@ -92,18 +58,30 @@ function enrichStudent(student, preloadedPayments) {
     ...student,
     orgId: targetOrgId,
     admissionDate: student.admissionDate || '',
-    messStartDate: messStartDate,
-    messExpiryDate: computedMessExpiry,
+    messStartDate: student.messStartDate,
+    messExpiryDate: messLedger.messExpiryDate,
     totalRentAgreed,
     totalRentPaid,
     rentBalanceDue,
-    totalMessPaid,
-    messBalanceDue,
-    totalPaidAll: totalRentPaid + totalMessPaid,
+    totalMessPaid: messLedger.totalMessPaid,
+    totalMessBilled: messLedger.totalMessBilled || (messLedger.totalMessPaid + messLedger.messBalanceDue),
+    messBalanceDue: messLedger.messBalanceDue,
+    totalPaidAll: totalRentPaid + messLedger.totalMessPaid,
 
-    messDynamicStatus,
-    messStatusLabel,
-    messDaysRemaining: student.enrolledInMess ? messCycleStatus.daysDiff : 999,
+    mealsPerDay: student.mealsPerDay || 3,
+    mealPlanType: student.mealPlanType || (student.mealsPerDay === 1 ? '1 Meal / Day' : (student.mealsPerDay === 2 ? '2 Meals / Day' : '3 Meals / Day (Full)')),
+    mealSlots: student.mealSlots || ['Morning', 'Noon', 'Evening'],
+    planValidityType: student.planValidityType || 'MONTHLY',
+    planValidityDays: student.planValidityDays,
+    autoRemovedAt: student.autoRemovedAt,
+    autoRemoveReason: student.autoRemoveReason,
+
+    messDynamicStatus: messLedger.messDynamicStatus,
+    messStatusLabel: messLedger.messStatusLabel,
+    messDaysRemaining: messLedger.messDaysRemaining,
+    isOverdueMess: messLedger.isOverdue,
+    isUpcomingMess: messLedger.isUpcoming,
+    isEligibleForAutoRemove: messLedger.isEligibleForAutoRemove,
 
     rentDynamicStatus,
     rentStatusLabel,
@@ -111,13 +89,13 @@ function enrichStudent(student, preloadedPayments) {
 
     dynamicStatus,
     statusLabel: student.enrolledInMess
-      ? `Mess: ${messStatusLabel} | Rent: ${rentStatusLabel}`
+      ? `Mess: ${messLedger.messStatusLabel} | Rent: ${rentStatusLabel}`
       : `Hostel Rent: ${rentStatusLabel}`,
     whatsappReminder: generateWhatsAppReminder({
       ...student,
-      messStartDate,
-      messExpiryDate: computedMessExpiry,
-      messBalanceDue,
+      messStartDate: student.messStartDate,
+      messExpiryDate: messLedger.messExpiryDate,
+      messBalanceDue: messLedger.messBalanceDue,
       totalRentAgreed,
       totalRentPaid,
       rentBalanceDue
@@ -291,6 +269,14 @@ exports.createStudent = async (req, res) => {
     // ☁️ Offload photo to Supabase Storage (prevents Base64 database bloat)
     const storedPhotoUrl = await storageService.processImage(photoUrl, 'students');
 
+    const {
+      mealsPerDay = 3,
+      mealPlanType,
+      mealSlots = ['Morning', 'Noon', 'Evening'],
+      planValidityType = 'MONTHLY',
+      planValidityDays
+    } = req.body;
+
     const newStudent = {
       id: `stud-${uuidv4().substring(0, 8)}`,
       orgId: orgId,
@@ -309,6 +295,11 @@ exports.createStudent = async (req, res) => {
       cycleDay: cDay,
       monthlyMessFee: mFee,
       messExpiryDate: messExpiryDateStr,
+      mealsPerDay: parseInt(mealsPerDay) || 3,
+      mealPlanType: mealPlanType || (parseInt(mealsPerDay) === 1 ? '1 Meal / Day' : (parseInt(mealsPerDay) === 2 ? '2 Meals / Day' : '3 Meals / Day (Full)')),
+      mealSlots: Array.isArray(mealSlots) ? mealSlots : ['Morning', 'Noon', 'Evening'],
+      planValidityType: planValidityType || 'MONTHLY',
+      planValidityDays: planValidityDays ? parseInt(planValidityDays) : null,
       totalRentAgreed: agreedRent,
       rentTermMonths: termMonths,
       rentAmountPerTerm: agreedRent,
@@ -366,6 +357,11 @@ exports.updateStudent = async (req, res) => {
       enrolledInMess,
       monthlyMessFee,
       messExpiryDate,
+      mealsPerDay,
+      mealPlanType,
+      mealSlots,
+      planValidityType,
+      planValidityDays,
       totalRentAgreed,
       rentTermMonths,
       rentAmountPerTerm,
@@ -396,6 +392,21 @@ exports.updateStudent = async (req, res) => {
       updatedMessExpiry = calculateMessExpiryDate(updatedMessStartDate, 0, fee);
     }
 
+    // 🔄 Plan change rollover tracking (Requirement 8)
+    const oldFee = students[index].monthlyMessFee;
+    const newFee = monthlyMessFee !== undefined ? parseFloat(monthlyMessFee) : oldFee;
+    let messPlanHistory = students[index].messPlanHistory || [];
+    if (oldFee && newFee && oldFee !== newFee) {
+      messPlanHistory = [
+        ...messPlanHistory,
+        {
+          fee: oldFee,
+          changedAt: new Date().toISOString(),
+          changedTo: newFee
+        }
+      ];
+    }
+
     students[index] = {
       ...students[index],
       name: name !== undefined ? name.trim() : students[index].name,
@@ -406,8 +417,16 @@ exports.updateStudent = async (req, res) => {
       admissionDate: updatedAdmissionDate,
       messStartDate: updatedMessStartDate,
       enrolledInMess: isMess,
-      monthlyMessFee: monthlyMessFee !== undefined ? parseFloat(monthlyMessFee) : students[index].monthlyMessFee,
+      monthlyMessFee: newFee,
+      messPlanHistory,
+      previousMessFee: (oldFee && newFee && oldFee !== newFee) ? oldFee : (students[index].previousMessFee || oldFee),
+      planChangedAt: (oldFee && newFee && oldFee !== newFee) ? new Date().toISOString() : students[index].planChangedAt,
       messExpiryDate: updatedMessExpiry,
+      mealsPerDay: mealsPerDay !== undefined ? parseInt(mealsPerDay) : (students[index].mealsPerDay || 3),
+      mealPlanType: mealPlanType !== undefined ? mealPlanType : students[index].mealPlanType,
+      mealSlots: mealSlots !== undefined ? (Array.isArray(mealSlots) ? mealSlots : [mealSlots]) : (students[index].mealSlots || ['Morning', 'Noon', 'Evening']),
+      planValidityType: planValidityType !== undefined ? planValidityType : (students[index].planValidityType || 'MONTHLY'),
+      planValidityDays: planValidityDays !== undefined ? parseInt(planValidityDays) : students[index].planValidityDays,
       totalRentAgreed: updatedRentAgreed !== undefined ? updatedRentAgreed : (students[index].rentAmountPerTerm || 0),
       rentTermMonths: rentTermMonths !== undefined ? parseInt(rentTermMonths) : students[index].rentTermMonths,
       rentAmountPerTerm: updatedRentAgreed !== undefined ? updatedRentAgreed : students[index].rentAmountPerTerm,

@@ -7,6 +7,7 @@ router.get('/members', messController.getMessMembers);
 router.post('/members', messController.createMessMember);
 router.delete('/members/:id', messController.unenrollMessMember);
 router.post('/members/:id/unenroll', messController.unenrollMessMember);
+router.post('/members/:id/restore', messController.restoreMessMember);
 router.post('/bulk-extend-validity', messController.bulkExtendMessValidity);
 
 // Daily Kitchen Grocery Expenses

@@ -4,8 +4,10 @@ import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/mess_expense.dart';
+import '../../models/student.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mess_provider.dart';
+import '../../providers/dashboard_provider.dart';
 import '../../widgets/student_avatar.dart';
 import '../../widgets/remove_student_dialog.dart';
 import 'add_expense_screen.dart';
@@ -62,6 +64,64 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
               await mess.deleteExpense(expense.id, auth.currentAdmin?.name ?? 'Admin');
             },
             child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmRestoreMember(Student member) {
+    final mess = context.read<MessProvider>();
+    final auth = context.read<AuthProvider>();
+    final dash = context.read<DashboardProvider>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.15), shape: BoxShape.circle),
+              child: const Icon(Icons.settings_backup_restore_rounded, color: AppColors.success, size: 22),
+            ),
+            const SizedBox(width: 10),
+            const Text('Restore Member?'),
+          ],
+        ),
+        content: Text(
+          'Do you want to restore "${member.name}" back to the active mess subscription list? Their mess cycle will restart from today.',
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final ok = await mess.restoreMessMember(member.id, auth.currentAdmin?.name ?? 'Admin');
+              if (mounted) {
+                if (ok) {
+                  dash.fetchDashboardStats();
+                  dash.fetchDuesAndExpiries();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('✅ "${member.name}" restored to active mess successfully!'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(mess.error ?? 'Failed to restore member'),
+                      backgroundColor: AppColors.danger,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Restore Member'),
           ),
         ],
       ),
@@ -191,6 +251,12 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                     _buildMemberTypeChip(mess, 'Outside Only (${mess.totalOutsideCount})', 'OUTSIDE_ONLY', isDark),
                     const SizedBox(width: 8),
                     _buildMemberTypeChip(mess, 'Hostelites (${mess.totalHostelCount})', 'HOSTEL_ONLY', isDark),
+                    const SizedBox(width: 8),
+                    _buildMemberTypeChip(mess, '🔴 Overdue (${mess.overdueCount})', 'OVERDUE', isDark),
+                    const SizedBox(width: 8),
+                    _buildMemberTypeChip(mess, '🟡 Upcoming (${mess.upcomingCount})', 'UPCOMING', isDark),
+                    const SizedBox(width: 8),
+                    _buildMemberTypeChip(mess, '🚫 Auto-Removed (${mess.removedCount})', 'REMOVED', isDark),
                   ],
                 ),
               ),
@@ -267,6 +333,17 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                                                     color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
                                                   ),
                                                 ),
+                                                if (member.mealPlanType.isNotEmpty) ...[
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    '🍽️ ${member.mealPlanType}',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: isDark ? AppColors.secondaryLight : AppColors.secondary,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
                                               ],
                                             ),
                                           ),
@@ -278,10 +355,23 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                                       children: [
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(color: badge.bgColor, borderRadius: BorderRadius.circular(6)),
+                                          decoration: BoxDecoration(
+                                            color: (member.isAutoRemoved || mess.memberTypeFilter == 'REMOVED')
+                                                ? AppColors.danger.withValues(alpha: 0.15)
+                                                : badge.bgColor,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
                                           child: Text(
-                                            member.messStatusLabel.isNotEmpty ? member.messStatusLabel : badge.label,
-                                            style: TextStyle(color: badge.textColor, fontWeight: FontWeight.bold, fontSize: 11),
+                                            (member.isAutoRemoved || mess.memberTypeFilter == 'REMOVED')
+                                                ? 'AUTO-REMOVED'
+                                                : (member.messStatusLabel.isNotEmpty ? member.messStatusLabel : badge.label),
+                                            style: TextStyle(
+                                              color: (member.isAutoRemoved || mess.memberTypeFilter == 'REMOVED')
+                                                  ? AppColors.danger
+                                                  : badge.textColor,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(width: 4),
@@ -291,7 +381,9 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                                           constraints: const BoxConstraints(),
                                           tooltip: 'Member Options',
                                           onSelected: (val) async {
-                                            if (val == 'view') {
+                                            if (val == 'restore') {
+                                              _confirmRestoreMember(member);
+                                            } else if (val == 'view') {
                                               await Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
@@ -332,6 +424,17 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                                             }
                                           },
                                           itemBuilder: (ctx) => [
+                                            if (member.isAutoRemoved || mess.memberTypeFilter == 'REMOVED')
+                                              const PopupMenuItem(
+                                                value: 'restore',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.settings_backup_restore_rounded, color: AppColors.success, size: 18),
+                                                    SizedBox(width: 8),
+                                                    Text('Restore Member', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
+                                                  ],
+                                                ),
+                                              ),
                                             const PopupMenuItem(
                                               value: 'view',
                                               child: Row(
@@ -358,25 +461,51 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                                                 ],
                                               ),
                                             ),
-                                            PopupMenuItem(
-                                              value: 'remove',
-                                              child: Row(
-                                                children: [
-                                                  const Icon(Icons.person_remove_outlined, color: AppColors.danger, size: 18),
-                                                  const SizedBox(width: 8),
-                                                  Text(
-                                                    isOutside ? 'Remove from Mess' : 'Unenroll / Remove',
-                                                    style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.w600),
-                                                  ),
-                                                ],
+                                            if (!member.isAutoRemoved && mess.memberTypeFilter != 'REMOVED')
+                                              PopupMenuItem(
+                                                value: 'remove',
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(Icons.person_remove_outlined, color: AppColors.danger, size: 18),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      isOutside ? 'Remove from Mess' : 'Unenroll / Remove',
+                                                      style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.w600),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            ),
                                           ],
                                         ),
                                       ],
                                     ),
                                   ],
                                 ),
+                                if (member.isAutoRemoved || mess.memberTypeFilter == 'REMOVED') ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.danger.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppColors.danger.withValues(alpha: 0.25)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 16),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            member.autoRemoveReason != null && member.autoRemoveReason!.isNotEmpty
+                                                ? 'Removed: ${member.autoRemoveReason}'
+                                                : 'Auto-Removed: Overdue >60 days without payment',
+                                            style: const TextStyle(color: AppColors.danger, fontSize: 11, fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                                 const Divider(height: 16),
 
                                 Row(
@@ -401,44 +530,61 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                                 ),
                                 const SizedBox(height: 12),
 
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        icon: const Icon(Icons.chat_bubble_outline, color: Color(0xFF25D366), size: 16),
-                                        label: const Text('WhatsApp Reminder', style: TextStyle(fontSize: 12)),
-                                        style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF25D366))),
-                                        onPressed: () {
-                                          final reminder = member.whatsappReminder;
-                                          final message = reminder?['message'] ??
-                                              'Hi ${member.name}, monthly Mess subscription renewal is due. Total: ₹${member.monthlyMessFee}.';
-                                          UrlHelper.launchWhatsApp(phone: member.phone, message: message);
-                                        },
+                                if (member.isAutoRemoved || mess.memberTypeFilter == 'REMOVED') ...[
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.settings_backup_restore_rounded, size: 16),
+                                      label: const Text('Restore Member to Active Mess', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.success,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                       ),
+                                      onPressed: () => _confirmRestoreMember(member),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: ElevatedButton.icon(
-                                        icon: const Icon(Icons.payment, size: 16),
-                                        label: const Text('Renew Mess', style: TextStyle(fontSize: 12)),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: isDark ? AppColors.secondaryLight : AppColors.secondary,
+                                  ),
+                                ] else ...[
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(Icons.chat_bubble_outline, color: Color(0xFF25D366), size: 16),
+                                          label: const Text('WhatsApp Reminder', style: TextStyle(fontSize: 12)),
+                                          style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF25D366))),
+                                          onPressed: () {
+                                            final reminder = member.whatsappReminder;
+                                            final message = reminder?['message'] ??
+                                                'Hi ${member.name}, monthly Mess subscription renewal is due. Total: ₹${member.monthlyMessFee}.';
+                                            UrlHelper.launchWhatsApp(phone: member.phone, message: message);
+                                          },
                                         ),
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => RecordPaymentScreen(
-                                                preSelectedStudent: member,
-                                                defaultFeeType: 'MESS',
-                                              ),
-                                            ),
-                                          );
-                                        },
                                       ),
-                                    ),
-                                  ],
-                                ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          icon: const Icon(Icons.payment, size: 16),
+                                          label: const Text('Renew Mess', style: TextStyle(fontSize: 12)),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isDark ? AppColors.secondaryLight : AppColors.secondary,
+                                          ),
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => RecordPaymentScreen(
+                                                  preSelectedStudent: member,
+                                                  defaultFeeType: 'MESS',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
                           ),

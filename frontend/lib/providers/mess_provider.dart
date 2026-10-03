@@ -12,7 +12,10 @@ class MessProvider with ChangeNotifier {
   int _totalAllCount = 0;
   int _totalOutsideCount = 0;
   int _totalHostelCount = 0;
-  String _memberTypeFilter = 'ALL'; // 'ALL', 'OUTSIDE_ONLY', 'HOSTEL_ONLY'
+  int _removedCount = 0;
+  int _overdueCount = 0;
+  int _upcomingCount = 0;
+  String _memberTypeFilter = 'ALL'; // 'ALL', 'OUTSIDE_ONLY', 'HOSTEL_ONLY', 'REMOVED', 'OVERDUE', 'UPCOMING'
   String _memberSearchQuery = '';
 
   // Mess Expenses State
@@ -28,6 +31,9 @@ class MessProvider with ChangeNotifier {
   int get totalAllCount => _totalAllCount;
   int get totalOutsideCount => _totalOutsideCount;
   int get totalHostelCount => _totalHostelCount;
+  int get removedCount => _removedCount;
+  int get overdueCount => _overdueCount;
+  int get upcomingCount => _upcomingCount;
   String get memberTypeFilter => _memberTypeFilter;
 
   List<MessExpense> get expenses => _expenses;
@@ -56,10 +62,16 @@ class MessProvider with ChangeNotifier {
       final serverAll = (res['totalAllCount'] ?? res['totalCount'] ?? res['count'] as num?)?.toInt();
       final serverOutside = (res['totalOutsideCount'] ?? res['outsideCount'] as num?)?.toInt();
       final serverHostel = (res['totalHostelCount'] ?? res['hostelCount'] as num?)?.toInt();
+      final serverRemoved = (res['removedCount'] as num?)?.toInt();
+      final serverOverdue = (res['overdueCount'] as num?)?.toInt();
+      final serverUpcoming = (res['upcomingCount'] as num?)?.toInt();
 
       _totalAllCount = serverAll ?? _messMembers.length;
       _totalOutsideCount = serverOutside ?? _messMembers.where((m) => m.isMessOnly).length;
       _totalHostelCount = serverHostel ?? _messMembers.where((m) => !m.isMessOnly).length;
+      _removedCount = serverRemoved ?? 0;
+      _overdueCount = serverOverdue ?? 0;
+      _upcomingCount = serverUpcoming ?? 0;
 
       _isLoading = false;
       notifyListeners();
@@ -107,6 +119,18 @@ class MessProvider with ChangeNotifier {
   Future<bool> unenrollMessMember(String id, String adminName, {bool removeFromHostel = false, String? reason}) async {
     try {
       await _api.unenrollMessMember(id, adminName, removeFromHostel: removeFromHostel, reason: reason);
+      await fetchMessMembers();
+      return true;
+    } catch (e) {
+      _error = e.toString().replaceAll('Exception:', '').trim();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> restoreMessMember(String id, String adminName) async {
+    try {
+      await _api.restoreMessMember(id, adminName);
       await fetchMessMembers();
       return true;
     } catch (e) {

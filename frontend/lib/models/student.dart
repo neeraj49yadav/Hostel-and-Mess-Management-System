@@ -15,6 +15,16 @@ class Student {
   final bool enrolledInMess;
   final double monthlyMessFee;
   final String messExpiryDate;
+  final int mealsPerDay; // 1, 2, or 3
+  final String mealPlanType; // e.g. '1 Meal / Day', '2 Meals / Day', '3 Meals / Day (Full)'
+  final List<String> mealSlots; // e.g. ['Morning', 'Noon', 'Evening']
+  final String planValidityType; // 'MONTHLY' or 'CUSTOM_DAYS'
+  final int? planValidityDays;
+  final bool isAutoRemoved;
+  final String? autoRemovedAt;
+  final String? autoRemoveReason;
+  final bool isOverdueMess;
+  final bool isUpcomingMess;
   final double totalRentAgreed;
   final double totalRentPaid;
   final double rentBalanceDue;
@@ -65,6 +75,16 @@ class Student {
     required this.enrolledInMess,
     required this.monthlyMessFee,
     required this.messExpiryDate,
+    this.mealsPerDay = 3,
+    this.mealPlanType = '3 Meals / Day (Full)',
+    this.mealSlots = const ['Morning', 'Noon', 'Evening'],
+    this.planValidityType = 'MONTHLY',
+    this.planValidityDays,
+    this.isAutoRemoved = false,
+    this.autoRemovedAt,
+    this.autoRemoveReason,
+    this.isOverdueMess = false,
+    this.isUpcomingMess = false,
     required this.totalRentAgreed,
     required this.totalRentPaid,
     required this.rentBalanceDue,
@@ -106,6 +126,14 @@ class Student {
     final messDue = (json['messBalanceDue'] as num?)?.toDouble() ?? 0.0;
     final totalAll = (json['totalPaidAll'] as num?)?.toDouble() ?? (rentPaid + messPaid);
 
+    final mPerDay = (json['mealsPerDay'] as num?)?.toInt() ?? 3;
+    final mSlots = json['mealSlots'] is List
+        ? (json['mealSlots'] as List).map((e) => e.toString()).toList()
+        : <String>['Morning', 'Noon', 'Evening'];
+
+    final statusStr = json['status']?.toString() ?? 'ACTIVE';
+    final autoRem = statusStr == 'MESS_AUTO_REMOVED' || statusStr == 'REMOVED_AUTO' || json['isAutoRemoved'] == true || json['autoRemovedAt'] != null;
+
     return Student(
       id: json['id'] ?? '',
       memberType: mType,
@@ -123,6 +151,16 @@ class Student {
       enrolledInMess: isMess,
       monthlyMessFee: fee,
       messExpiryDate: json['messExpiryDate'] ?? json['planExpiryDate'] ?? '',
+      mealsPerDay: mPerDay,
+      mealPlanType: json['mealPlanType'] ?? (mPerDay == 1 ? '1 Meal / Day' : (mPerDay == 2 ? '2 Meals / Day' : '3 Meals / Day (Full)')),
+      mealSlots: mSlots,
+      planValidityType: json['planValidityType'] ?? 'MONTHLY',
+      planValidityDays: (json['planValidityDays'] as num?)?.toInt(),
+      isAutoRemoved: autoRem,
+      autoRemovedAt: json['autoRemovedAt']?.toString(),
+      autoRemoveReason: json['autoRemoveReason']?.toString(),
+      isOverdueMess: json['isOverdueMess'] == true,
+      isUpcomingMess: json['isUpcomingMess'] == true,
       totalRentAgreed: rentAgreed,
       totalRentPaid: rentPaid,
       rentBalanceDue: rentDue,
@@ -132,7 +170,7 @@ class Student {
       rentTermMonths: (json['rentTermMonths'] as num?)?.toInt() ?? 6,
       rentAmountPerTerm: rentAgreed,
       rentExpiryDate: json['rentExpiryDate'],
-      status: json['status'] ?? 'ACTIVE',
+      status: statusStr,
       messDynamicStatus: json['messDynamicStatus'] ?? json['dynamicStatus'] ?? 'ACTIVE',
       messStatusLabel: json['messStatusLabel'] ?? '',
       messDaysRemaining: (json['messDaysRemaining'] as num?)?.toInt() ?? 0,
@@ -165,6 +203,14 @@ class Student {
     'enrolledInMess': enrolledInMess,
     'monthlyMessFee': monthlyMessFee,
     'messExpiryDate': messExpiryDate,
+    'mealsPerDay': mealsPerDay,
+    'mealPlanType': mealPlanType,
+    'mealSlots': mealSlots,
+    'planValidityType': planValidityType,
+    'planValidityDays': planValidityDays,
+    'isAutoRemoved': isAutoRemoved,
+    'autoRemovedAt': autoRemovedAt,
+    'autoRemoveReason': autoRemoveReason,
     'totalRentAgreed': totalRentAgreed,
     'totalRentPaid': totalRentPaid,
     'rentBalanceDue': rentBalanceDue,

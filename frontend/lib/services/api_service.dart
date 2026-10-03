@@ -523,6 +523,13 @@ class ApiService {
     });
   }
 
+  Future<Student> restoreMessMember(String id, String adminName) async {
+    final res = await _post('${ApiConstants.messMembers}/$id/restore', {
+      'adminName': adminName,
+    });
+    return Student.fromJson(res['data']);
+  }
+
   Future<Map<String, dynamic>> bulkExtendMessValidity({
     required int days,
     String? reason,
