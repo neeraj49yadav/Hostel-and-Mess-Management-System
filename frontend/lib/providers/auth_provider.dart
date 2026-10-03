@@ -80,51 +80,57 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_jwt_token');
       final loggedAdminId = prefs.getString('logged_admin_id');
+      final savedOrgId = prefs.getString('selected_org_id');
 
-      if (token != null && token.isNotEmpty && loggedAdminId != null && loggedAdminId.isNotEmpty) {
-        final savedName = prefs.getString('logged_admin_name') ?? 'Admin';
-        final savedPhone = prefs.getString('logged_admin_phone') ?? '';
-        final savedRole = prefs.getString('logged_admin_role') ?? 'Admin';
-        final savedPhoto = prefs.getString('logged_admin_photo');
-        final savedOrgId = prefs.getString('selected_org_id') ?? 'org-default';
-        final savedOrgCode = prefs.getString('selected_org_code') ?? 'HOSTEL';
+      // Purge legacy dummy placeholder if present
+      if (savedOrgId == 'org-default') {
+        await prefs.remove('selected_org_id');
+        await prefs.remove('selected_org_code');
+        await prefs.remove('selected_org_name');
+        await prefs.remove('selected_org_city');
+        await prefs.remove('selected_org_phone');
+        await prefs.remove('selected_org_logo');
+      }
 
-        _currentAdmin = AdminUser(
-          id: loggedAdminId,
-          name: savedName,
-          role: savedRole,
-          phone: savedPhone,
-          profilePhoto: savedPhoto,
-          orgId: savedOrgId,
-          orgCode: savedOrgCode,
-        );
+      final validOrgId = (savedOrgId != null && savedOrgId.isNotEmpty && savedOrgId != 'org-default')
+          ? savedOrgId
+          : null;
 
+      if (validOrgId != null) {
+        final savedOrgCode = prefs.getString('selected_org_code') ?? '';
         _currentOrganization ??= Organization(
-          id: savedOrgId,
-          name: prefs.getString('selected_org_name') ?? 'My Hostel & Mess',
+          id: validOrgId,
+          name: prefs.getString('selected_org_name') ?? '',
           code: savedOrgCode,
           city: prefs.getString('selected_org_city') ?? '',
           contactPhone: prefs.getString('selected_org_phone') ?? '',
           logo: prefs.getString('selected_org_logo'),
         );
 
-        // 🔒 Security: Restoring session does NOT auto-login; always require 4-digit PIN!
-        _isAuthenticated = false;
-        notifyListeners();
-      } else {
-        final savedOrgId = prefs.getString('selected_org_id');
-        if (savedOrgId != null) {
-          _currentOrganization ??= Organization(
-            id: savedOrgId,
-            name: prefs.getString('selected_org_name') ?? 'My Hostel & Mess',
-            code: prefs.getString('selected_org_code') ?? 'HOSTEL',
-            city: prefs.getString('selected_org_city') ?? '',
-            contactPhone: prefs.getString('selected_org_phone') ?? '',
-            logo: prefs.getString('selected_org_logo'),
+        if (token != null && token.isNotEmpty && loggedAdminId != null && loggedAdminId.isNotEmpty) {
+          final savedName = prefs.getString('logged_admin_name') ?? 'Admin';
+          final savedPhone = prefs.getString('logged_admin_phone') ?? '';
+          final savedRole = prefs.getString('logged_admin_role') ?? 'Admin';
+          final savedPhoto = prefs.getString('logged_admin_photo');
+
+          _currentAdmin = AdminUser(
+            id: loggedAdminId,
+            name: savedName,
+            role: savedRole,
+            phone: savedPhone,
+            profilePhoto: savedPhoto,
+            orgId: validOrgId,
+            orgCode: savedOrgCode,
           );
-          notifyListeners();
         }
+      } else {
+        _currentOrganization = null;
+        _currentAdmin = null;
       }
+
+      // 🔒 Security: Cold start ALWAYS unauthenticated on PinScreen
+      _isAuthenticated = false;
+      notifyListeners();
     } catch (e) {
       debugPrint('[AuthProvider] Error restoring session: $e');
     }
@@ -425,29 +431,14 @@ class AuthProvider with ChangeNotifier {
       }
       final savedOrgId = prefs.getString('selected_org_id');
 
-      if (savedOrgId != null && _availableOrganizations.isNotEmpty) {
-        _currentOrganization = _availableOrganizations.firstWhere(
-          (o) => o.id == savedOrgId,
-          orElse: () => _currentOrganization ?? _availableOrganizations.first,
-        );
-      } else if (_availableOrganizations.isNotEmpty && _currentOrganization == null) {
-        _currentOrganization = _availableOrganizations.first;
+      if (savedOrgId != null && savedOrgId.isNotEmpty && savedOrgId != 'org-default' && _availableOrganizations.isNotEmpty) {
+        final matched = _availableOrganizations.where((o) => o.id == savedOrgId).firstOrNull;
+        if (matched != null) {
+          _currentOrganization = matched;
+        }
       }
       notifyListeners();
     } catch (_) {
-      // Offline fallback: ONLY set default if memory and persistent cache had absolutely nothing
-      if (_availableOrganizations.isEmpty) {
-        _availableOrganizations = [
-          Organization(
-            id: 'org-default',
-            name: 'My Hostel & Mess',
-            code: 'HOSTEL',
-            city: 'Main Campus',
-            contactPhone: '',
-          ),
-        ];
-        _currentOrganization ??= _availableOrganizations.first;
-      }
       notifyListeners();
     }
   }
@@ -469,20 +460,16 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> _loadAvailableAdmins() async {
+    if (_currentOrganization == null) {
+      _availableAdmins = [];
+      notifyListeners();
+      return;
+    }
     try {
       _availableAdmins = await _api.getAdmins();
       notifyListeners();
     } catch (_) {
-      // Offline fallback: default 3 admins for default org
-      if (_currentOrganization == null || _currentOrganization!.id == 'org-default') {
-        _availableAdmins = [
-          AdminUser(id: 'admin-1', orgId: 'org-default', orgCode: 'CITYPRIDE', name: 'Warden 1 (Chief Warden)', role: 'Chief Warden', phone: '9876543210'),
-          AdminUser(id: 'admin-2', orgId: 'org-default', orgCode: 'CITYPRIDE', name: 'Warden 2 (Hostel In-charge)', role: 'Hostel In-charge', phone: '9876543211'),
-          AdminUser(id: 'admin-3', orgId: 'org-default', orgCode: 'CITYPRIDE', name: 'Warden 3 (Mess In-charge)', role: 'Mess In-charge', phone: '9876543212'),
-        ];
-      } else {
-        _availableAdmins = [];
-      }
+      _availableAdmins = [];
       notifyListeners();
     }
   }
@@ -559,6 +546,13 @@ class AuthProvider with ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
+    if (_currentOrganization == null && orgId == null) {
+      _isLoading = false;
+      _errorMessage = 'Please connect to an organization first.';
+      notifyListeners();
+      return false;
+    }
+
     try {
       final targetOrgId = orgId ?? _currentOrganization?.id;
       final targetOrgCode = orgCode ?? _currentOrganization?.code;
@@ -600,28 +594,6 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      // Offline fallback: PIN 1111, 2222, 3333 on default org
-      if ((_currentOrganization == null || _currentOrganization!.id == 'org-default') &&
-          (pin == '1111' || pin == '2222' || pin == '3333')) {
-        int idx = pin == '1111' ? 0 : (pin == '2222' ? 1 : 2);
-        final admin = _availableAdmins.isNotEmpty
-            ? _availableAdmins[idx % _availableAdmins.length]
-            : AdminUser(id: 'admin-${idx + 1}', name: 'Warden ${idx + 1}', role: 'Admin', phone: '987654321$idx');
-        _currentAdmin = admin;
-        _isAuthenticated = true;
-        _isLoading = false;
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('logged_admin_id', admin.id);
-        await prefs.setString('logged_admin_name', admin.name);
-        await prefs.setString('logged_admin_role', admin.role);
-        await prefs.setString('logged_admin_phone', admin.phone);
-        await _api.setAuthToken('fallback-token-${admin.id}');
-
-        notifyListeners();
-        return true;
-      }
-
       _isLoading = false;
       _errorMessage = e.toString().replaceAll('Exception:', '').trim();
       notifyListeners();

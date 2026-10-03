@@ -190,7 +190,7 @@ class _HomeShellState extends State<HomeShell> {
                     child: const Icon(Icons.history_rounded, color: AppColors.primaryLight, size: 20),
                   ),
                   title: const Text('Admin Audit Log', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: const Text('3-Admin timestamped trail', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  subtitle: const Text('Timestamped activity trail', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                   trailing: const Icon(Icons.chevron_right, size: 20),
                   onTap: () {
                     Navigator.pop(ctx);
@@ -258,7 +258,7 @@ class _HomeShellState extends State<HomeShell> {
                   Text(
                     auth.currentOrganization != null
                         ? 'Org: ${auth.currentOrganization!.code} • ${auth.currentAdmin?.name ?? "Admin"}'
-                        : '3-Admin Synchronized',
+                        : 'Cloud Synchronized',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w500,

@@ -1,7 +1,7 @@
 {
   "name": "hostel-mess-admin-backend",
   "version": "1.0.0",
-  "description": "3-Admin Hostel and Mess Management REST API Backend",
+  "description": "Hostel and Mess Management REST API Backend",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

@@ -53,7 +53,7 @@ app.get(['/api/health', '/api/ping', '/api/v1/keep-alive'], (req, res) => {
     secure: true,
     securityFeatures: ['Helmet', 'JWT-Bearer-Auth', 'Rate-Limiting', 'Input-Sanitization', 'XSS-Protection'],
     timestamp: new Date().toISOString(),
-    service: 'Hostel & Mess 3-Admin Backend API',
+    service: 'Hostel & Mess Backend API',
     version: '2.4.0'
   });
 });
@@ -121,7 +121,7 @@ app.use((err, req, res, next) => {
 // 14. Start Server
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);
-  console.log(`🔒 3-Admin Hostel & Mess SECURE Backend Running!`);
+  console.log(`🔒 Hostel & Mess SECURE Backend Running!`);
   console.log(`📡 Local:    http://localhost:${PORT}`);
   console.log(`📡 Network:  http://0.0.0.0:${PORT}`);
   console.log(`🛡️  Security: Helmet | Rate-Limiter | JWT Bearer Auth`);

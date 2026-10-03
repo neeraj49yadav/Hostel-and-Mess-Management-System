@@ -30,12 +30,10 @@ class _PinScreenState extends State<PinScreen> {
 
   Future<void> _checkFirstTimeUser() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final hasCompleted = prefs.getBool('has_completed_org_onboarding') ?? false;
       final auth = context.read<AuthProvider>();
 
-      // Show welcome popup if first time opening or no custom organization selected yet
-      if (!hasCompleted && (auth.currentOrganization == null || auth.currentOrganization!.id == 'org-default')) {
+      // Show welcome popup whenever no organization is connected or created
+      if (auth.currentOrganization == null) {
         if (mounted) {
           _showFirstTimeOnboardingDialog();
         }
@@ -49,158 +47,160 @@ class _PinScreenState extends State<PinScreen> {
       barrierDismissible: false,
       builder: (ctx) {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-          contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) {},
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+            contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.business_rounded, color: AppColors.primary, size: 26),
                 ),
-                child: const Icon(Icons.business_rounded, color: AppColors.primary, size: 26),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Welcome to Hostel Management',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Welcome to Hostel Management',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Get started by setting up your hostel or mess organization. Choose an option below to proceed:',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
-                  height: 1.4,
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Get started by setting up your hostel or mess organization. Choose an option below to proceed:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                    height: 1.4,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // Option 1: Create Organization
-              Material(
-                color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
-                borderRadius: BorderRadius.circular(16),
-                child: InkWell(
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('has_completed_org_onboarding', true);
-                    _showRegisterOrgModal();
-                  },
+                // Option 1: Create Organization
+                Material(
+                  color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
                   borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1.5),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _showRegisterOrgModal();
+                      if (mounted) {
+                        final auth = context.read<AuthProvider>();
+                        if (auth.currentOrganization == null) {
+                          _showFirstTimeOnboardingDialog();
+                        }
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.add_business_rounded, color: Colors.white, size: 22),
                           ),
-                          child: const Icon(Icons.add_business_rounded, color: Colors.white, size: 22),
-                        ),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Create Organization',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                              ),
-                              SizedBox(height: 3),
-                              Text(
-                                'Register a new hostel/mess & set admin PIN',
-                                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                              ),
-                            ],
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Create Organization',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                                SizedBox(height: 3),
+                                Text(
+                                  'Register a new hostel/mess & set admin PIN',
+                                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.primary),
-                      ],
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.primary),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-              // Option 2: Enter Code to Join Organization
-              Material(
-                color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
-                borderRadius: BorderRadius.circular(16),
-                child: InkWell(
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('has_completed_org_onboarding', true);
-                    _showJoinOrgDialog();
-                  },
+                // Option 2: Enter Code to Join Organization
+                Material(
+                  color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
                   borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3), width: 1.5),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.secondary,
-                            borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _showJoinOrgDialog();
+                      if (mounted) {
+                        final auth = context.read<AuthProvider>();
+                        if (auth.currentOrganization == null) {
+                          _showFirstTimeOnboardingDialog();
+                        }
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3), width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.secondary,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.vpn_key_rounded, color: Colors.white, size: 22),
                           ),
-                          child: const Icon(Icons.vpn_key_rounded, color: Colors.white, size: 22),
-                        ),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Enter Code to Join',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                              ),
-                              SizedBox(height: 3),
-                              Text(
-                                'Join with hostel code (e.g. YADAV, GALAXY)',
-                                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                              ),
-                            ],
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Enter Code to Join',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                                SizedBox(height: 3),
+                                Text(
+                                  'Join with your unique hostel code',
+                                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.secondary),
-                      ],
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.secondary),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('has_completed_org_onboarding', true);
-                },
-                child: const Text('Continue to Normal Login Screen'),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -208,6 +208,11 @@ class _PinScreenState extends State<PinScreen> {
   }
 
   void _onDigitPressed(String digit) {
+    final auth = context.read<AuthProvider>();
+    if (auth.currentOrganization == null) {
+      _showFirstTimeOnboardingDialog();
+      return;
+    }
     if (_enteredPin.length < _pinLength) {
       setState(() {
         _enteredPin += digit;
@@ -234,8 +239,15 @@ class _PinScreenState extends State<PinScreen> {
   }
 
   Future<void> _verifyPin([String? pinToVerify]) async {
-    final pin = pinToVerify ?? _enteredPin;
     final auth = context.read<AuthProvider>();
+    if (auth.currentOrganization == null) {
+      _showFirstTimeOnboardingDialog();
+      setState(() {
+        _enteredPin = '';
+      });
+      return;
+    }
+    final pin = pinToVerify ?? _enteredPin;
     final success = await auth.loginWithPin(pin);
 
     if (mounted) {
@@ -258,7 +270,7 @@ class _PinScreenState extends State<PinScreen> {
     }
   }
 
-  void _showRegisterOrgModal() {
+  Future<void> _showRegisterOrgModal() async {
     final auth = context.read<AuthProvider>();
     final orgNameCtrl = TextEditingController();
     final orgCodeCtrl = TextEditingController();
@@ -271,7 +283,7 @@ class _PinScreenState extends State<PinScreen> {
     final formKey = GlobalKey<FormState>();
     bool isSubmitting = false;
 
-    showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -392,7 +404,7 @@ class _PinScreenState extends State<PinScreen> {
                             textCapitalization: TextCapitalization.characters,
                             decoration: const InputDecoration(
                               labelText: 'Org Code (Unique) *',
-                              hintText: 'e.g. YADUVANSHI',
+                              hintText: 'Unique code',
                               prefixIcon: Icon(Icons.tag_rounded),
                             ),
                             validator: (val) {
@@ -410,7 +422,7 @@ class _PinScreenState extends State<PinScreen> {
                             controller: cityCtrl,
                             decoration: const InputDecoration(
                               labelText: 'City / Campus *',
-                              hintText: 'e.g. City / Campus',
+                              hintText: 'City / Campus',
                               prefixIcon: Icon(Icons.location_on_rounded),
                             ),
                             validator: (val) {
@@ -429,7 +441,7 @@ class _PinScreenState extends State<PinScreen> {
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
                         labelText: 'Hostel Contact Phone',
-                        hintText: 'e.g. 9876543210',
+                        hintText: 'Phone number',
                         prefixIcon: Icon(Icons.phone_rounded),
                       ),
                     ),
@@ -450,7 +462,7 @@ class _PinScreenState extends State<PinScreen> {
                       controller: adminNameCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Primary Admin Name *',
-                        hintText: 'e.g. Neeraj Yadav',
+                        hintText: 'Admin full name',
                         prefixIcon: Icon(Icons.person_rounded),
                       ),
                       validator: (val) {
@@ -466,7 +478,7 @@ class _PinScreenState extends State<PinScreen> {
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
                         labelText: 'Admin Mobile Number',
-                        hintText: 'e.g. 9811122233',
+                        hintText: 'Mobile number',
                         prefixIcon: Icon(Icons.phone_android_rounded),
                       ),
                     ),
@@ -550,6 +562,8 @@ class _PinScreenState extends State<PinScreen> {
                                   if (mounted) {
                                     setModalState(() => isSubmitting = false);
                                     if (success) {
+                                      final prefs = await SharedPreferences.getInstance();
+                                      await prefs.setBool('has_completed_org_onboarding', true);
                                       if (ctx.mounted) Navigator.pop(ctx);
                                       messenger.showSnackBar(
                                         SnackBar(
@@ -601,12 +615,12 @@ class _PinScreenState extends State<PinScreen> {
     );
   }
 
-  void _showJoinOrgDialog() {
+  Future<void> _showJoinOrgDialog() async {
     final auth = context.read<AuthProvider>();
     final joinCodeCtrl = TextEditingController();
     final currentOrg = auth.currentOrganization;
 
-    showDialog(
+    await showDialog<void>(
       context: context,
       builder: (ctx) {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
@@ -668,7 +682,7 @@ class _PinScreenState extends State<PinScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
                         decoration: InputDecoration(
                           labelText: 'Hostel / Organization Code',
-                          hintText: 'e.g. YADAV',
+                          hintText: 'Enter code',
                           prefixIcon: const Icon(Icons.vpn_key_rounded, size: 20),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -738,6 +752,9 @@ class _PinScreenState extends State<PinScreen> {
 
                           // 3. Registered Organization found -> Connect safely
                           await auth.selectOrganization(matched);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('has_completed_org_onboarding', true);
+
                           if (mounted) {
                             if (ctx.mounted) Navigator.pop(ctx);
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1052,61 +1069,70 @@ class _PinScreenState extends State<PinScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: InkWell(
-          onTap: _showJoinOrgDialog,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark ? AppColors.borderDark : AppColors.borderLight,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.business_rounded, size: 15, color: AppColors.primary),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    currentOrg != null ? '${currentOrg.name} (${currentOrg.code})' : 'My Hostel & Mess',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+        title: currentOrg != null
+            ? InkWell(
+                onTap: _showJoinOrgDialog,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? AppColors.borderDark : AppColors.borderLight,
                     ),
-                    overflow: TextOverflow.ellipsis,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.business_rounded, size: 15, color: AppColors.primary),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          '${currentOrg.name} (${currentOrg.code})',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppColors.primary),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 4),
-                const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppColors.primary),
-              ],
-            ),
-          ),
-        ),
+              )
+            : const Text(
+                'Hostel Management',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.add_business_rounded, size: 15, color: AppColors.primary),
-              label: const Text(
-                'Register',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                side: BorderSide(
-                  color: AppColors.primary.withValues(alpha: 0.5),
+          if (currentOrg != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.add_business_rounded, size: 15, color: AppColors.primary),
+                label: const Text(
+                  'Register',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                  side: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.5),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
+                onPressed: _showRegisterOrgModal,
               ),
-              onPressed: _showRegisterOrgModal,
             ),
-          ),
           IconButton(
             icon: const Icon(Icons.wifi_tethering_rounded),
             tooltip: 'Server Connection Settings',
@@ -1162,7 +1188,7 @@ class _PinScreenState extends State<PinScreen> {
                     Text(
                       currentOrg != null && currentOrg.name.isNotEmpty
                           ? currentOrg.name
-                          : 'Hostel & Mess',
+                          : 'Hostel Management',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,

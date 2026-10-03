@@ -264,7 +264,7 @@
       "messStartDate": "2026-08-21",
       "cycleDay": 21,
       "monthlyMessFee": 3000,
-      "messExpiryDate": "2026-09-21",
+      "messExpiryDate": "2026-10-21",
       "rentTermMonths": 0,
       "rentAmountPerTerm": 0,
       "rentExpiryDate": null,
@@ -272,7 +272,16 @@
       "notes": "Pratap Hostel",
       "createdAt": "2026-09-19T19:04:27.297Z",
       "totalRentAgreed": 0,
-      "updatedAt": "2026-09-27T06:20:44.102Z"
+      "updatedAt": "2026-10-03T15:57:43.847Z",
+      "previousMessFee": 3500,
+      "planChangedAt": "2026-09-21T00:00:00.000Z",
+      "messPlanHistory": [
+        {
+          "fee": 3500,
+          "changedAt": "2026-09-21T00:00:00.000Z",
+          "changedTo": 3000
+        }
+      ]
     },
     {
       "id": "mess-mem-e69540d4",

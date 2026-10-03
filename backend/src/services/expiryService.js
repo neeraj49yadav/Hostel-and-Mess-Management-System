@@ -220,8 +220,35 @@ function calculateMessLedger(student, studentPayments = [], asOfDate = new Date(
         cycleStart = cycleEnd;
       }
     } else {
-      // Single plan default: N cycles * current fee
-      totalMessBilled = cycleInfo.cycleCount * currentFee;
+      // Auto-detect plan change from historical payments if past payment was higher than currentFee
+      if (cycleInfo.cycleCount > 1 && messPayments.length > 0) {
+        let detectedBilled = 0;
+        let cycleStart = new Date(messStartDate);
+        for (let c = 0; c < cycleInfo.cycleCount; c++) {
+          const cycleEnd = new Date(cycleStart);
+          cycleEnd.setMonth(cycleEnd.getMonth() + 1);
+
+          if (c < cycleInfo.cycleCount - 1) {
+            const cyclePayment = messPayments.find(p => {
+              const pDate = new Date(p.paymentDate || p.createdAt);
+              return pDate >= cycleStart && pDate <= cycleEnd;
+            });
+            const pAmt = cyclePayment ? (parseFloat(cyclePayment.messAmount) || parseFloat(cyclePayment.amount) || 0) : 0;
+            if (pAmt > currentFee) {
+              detectedBilled += pAmt;
+            } else {
+              detectedBilled += currentFee;
+            }
+          } else {
+            detectedBilled += currentFee;
+          }
+          cycleStart = cycleEnd;
+        }
+        totalMessBilled = detectedBilled;
+      } else {
+        // Single plan default: N cycles * current fee
+        totalMessBilled = cycleInfo.cycleCount * currentFee;
+      }
     }
   }
 
@@ -232,6 +259,14 @@ function calculateMessLedger(student, studentPayments = [], asOfDate = new Date(
   let messExpiryDate = student.messExpiryDate;
   if (!messExpiryDate || messExpiryDate.trim() === '') {
     messExpiryDate = cycleInfo.currentCycleEnd;
+  }
+
+  // If student has paid all previous cycles, their active cycle is currentCycleEnd
+  const previousCyclesBilled = Math.max(0, totalMessBilled - currentFee);
+  if (totalMessPaid >= previousCyclesBilled) {
+    if (messExpiryDate < cycleInfo.currentCycleEnd) {
+      messExpiryDate = cycleInfo.currentCycleEnd;
+    }
   }
 
   // If student has paid for future cycles, extend expiry date accordingly
@@ -273,9 +308,12 @@ function calculateMessLedger(student, studentPayments = [], asOfDate = new Date(
     if (cycleStatus.daysDiff < 0) {
       dynamicStatus = 'EXPIRED';
       statusLabel = `₹${messBalanceDue.toFixed(0)} Due (${Math.abs(cycleStatus.daysDiff)}d Overdue)`;
-    } else {
+    } else if (cycleStatus.daysDiff <= 5) {
       dynamicStatus = 'EXPIRING_SOON';
-      statusLabel = `₹${messBalanceDue.toFixed(0)} Due (Due in ${cycleStatus.daysDiff}d)`;
+      statusLabel = `₹${messBalanceDue.toFixed(0)} Due (${cycleStatus.daysDiff === 0 ? 'Due today' : 'Due in ' + cycleStatus.daysDiff + 'd'})`;
+    } else {
+      dynamicStatus = 'ACTIVE';
+      statusLabel = `₹${messBalanceDue.toFixed(0)} Due (Valid till ${formatShortDate(messExpiryDate)})`;
     }
   }
 
