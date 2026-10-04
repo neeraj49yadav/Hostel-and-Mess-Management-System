@@ -96,17 +96,7 @@ exports.recordPayment = (req, res) => {
       }
     }
 
-    // 2. Advance Mess Expiry deterministically
-    if (finalMessAmount > 0 || feeType === 'MESS') {
-      const allStudentMessPayments = [...payments, newPayment];
-      const ledger = calculateMessLedger(student, allStudentMessPayments);
-      student.messExpiryDate = ledger.messExpiryDate;
-
-      const monthLabel = targetMonth ? ` for ${targetMonth}` : '';
-      cycleSummary.push(`Mess: ₹${finalMessAmount} paid${monthLabel} (Valid till ${student.messExpiryDate})`);
-    }
-
-    // 3. Update Rent Ledger & Overpayment Guard
+    // 2. Update Rent Ledger & Overpayment Guard
     const totalRentAgreed = parseFloat(student.totalRentAgreed !== undefined ? student.totalRentAgreed : (student.rentAmountPerTerm || 0));
     const previousRentPayments = payments
       .filter(p => p.studentId === studentId && (p.feeType === 'RENT' || (p.feeType === 'BOTH' && p.rentAmount > 0)))
@@ -140,9 +130,6 @@ exports.recordPayment = (req, res) => {
       }
     }
 
-    student.status = 'ACTIVE';
-    db.saveCollectionForOrg('students', orgId, students);
-
     const defaultMonth = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     const chosenTargetMonth = targetMonth || defaultMonth;
 
@@ -162,7 +149,7 @@ exports.recordPayment = (req, res) => {
       transactionRef: transactionRef || '',
       paymentDate,
       cycleStartDate: new Date().toISOString().split('T')[0],
-      cycleEndDate: cycleSummary.join(' | ') || `Paid ₹${totalPaid}`,
+      cycleEndDate: `Paid ₹${totalPaid}`,
       totalRentAgreed,
       totalRentPaidAfterPayment: updatedTotalRentPaid,
       remainingRentBalanceAfterPayment: remainingRentBalance,
@@ -171,6 +158,21 @@ exports.recordPayment = (req, res) => {
       notes: notes || ''
     };
 
+    // 3. Advance Mess Expiry deterministically
+    if (finalMessAmount > 0 || feeType === 'MESS') {
+      const studentMessPayments = payments.filter(p => p.studentId === studentId);
+      const allStudentMessPayments = [...studentMessPayments, newPayment];
+      const ledger = calculateMessLedger(student, allStudentMessPayments);
+      student.messExpiryDate = ledger.messExpiryDate;
+
+      const monthLabel = targetMonth ? ` for ${targetMonth}` : '';
+      cycleSummary.push(`Mess: ₹${finalMessAmount} paid${monthLabel} (Valid till ${student.messExpiryDate})`);
+    }
+
+    newPayment.cycleEndDate = cycleSummary.join(' | ') || `Paid ₹${totalPaid}`;
+    student.status = 'ACTIVE';
+
+    db.saveCollectionForOrg('students', orgId, students);
     payments.push(newPayment);
     db.saveCollectionForOrg('payments', orgId, payments);
 
