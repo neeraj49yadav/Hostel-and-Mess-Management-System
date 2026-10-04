@@ -139,10 +139,9 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 16),
 
           // 🚨 High Priority Expiry Alert Banner
-          if (expiringCount > 0 || overdueCount > 0 || totalMessDuesAmount > 0)
+          if (expiringCount > 0 || overdueCount > 0)
             Container(
               margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: isDark
                     ? (overdueCount > 0 ? const Color(0xFF450A0A) : const Color(0xFF451A03))
@@ -154,61 +153,65 @@ class DashboardScreen extends StatelessWidget {
                       : (overdueCount > 0 ? const Color(0xFFFCA5A5) : const Color(0xFFFDE68A)),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        overdueCount > 0 ? Icons.error_outline_rounded : Icons.warning_amber_rounded,
-                        color: overdueCount > 0 ? AppColors.dangerLight : AppColors.warningLight,
-                        size: 22,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        overdueCount > 0 ? 'Action Required: Pending Dues Alert' : 'Upcoming Expiry Alert',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: isDark
-                              ? (overdueCount > 0 ? const Color(0xFFFCA5A5) : const Color(0xFFFDE68A))
-                              : (overdueCount > 0 ? const Color(0xFF991B1B) : const Color(0xFF92400E)),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const DuesExpiryScreen()),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              overdueCount > 0 ? Icons.error_outline_rounded : Icons.warning_amber_rounded,
+                              color: overdueCount > 0 ? AppColors.dangerLight : AppColors.warningLight,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                overdueCount > 0 ? 'Action Required: Pending Dues Alert' : 'Upcoming Expiry Alert',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: isDark
+                                      ? (overdueCount > 0 ? const Color(0xFFFCA5A5) : const Color(0xFFFDE68A))
+                                      : (overdueCount > 0 ? const Color(0xFF991B1B) : const Color(0xFF92400E)),
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 14,
+                              color: isDark
+                                  ? (overdueCount > 0 ? const Color(0xFFFCA5A5) : const Color(0xFFFDE68A))
+                                  : (overdueCount > 0 ? const Color(0xFF991B1B) : const Color(0xFF92400E)),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '• Total Mess Dues: ${AppFormatters.formatCurrency(totalMessDuesAmount)} ($totalMessDuesCount Students: $currentMessCount Current, $overdueMessCount Overdue)\n• ${stats?.messExpiringSoonCount ?? 0} Mess plans expiring in 1–5 days\n• ${stats?.rentOverdueCount ?? 0} Hostel Rent installments overdue (${stats?.rentExpiringSoonCount ?? 0} upcoming)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: isDark
-                          ? (overdueCount > 0 ? const Color(0xFFFECACA) : const Color(0xFFFEF08A))
-                          : (overdueCount > 0 ? const Color(0xFF7F1D1D) : const Color(0xFF78350F)),
+                        const SizedBox(height: 8),
+                        Text(
+                          '• ${stats?.messExpiringSoonCount ?? 0} Mess plans expiring in 1–5 days\n• ${stats?.rentOverdueCount ?? 0} Hostel Rent installments overdue (${stats?.rentExpiringSoonCount ?? 0} upcoming)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.4,
+                            color: isDark
+                                ? (overdueCount > 0 ? const Color(0xFFFECACA) : const Color(0xFFFEF08A))
+                                : (overdueCount > 0 ? const Color(0xFF7F1D1D) : const Color(0xFF78350F)),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: overdueCount > 0 ? AppColors.danger : AppColors.warning,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      icon: const Icon(Icons.send_rounded, size: 16),
-                      label: const Text('Open Dues & WhatsApp Reminders'),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const DuesExpiryScreen()),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
 
@@ -236,46 +239,46 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ],
             ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const DuesExpiryScreen()),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(7),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withValues(alpha: isDark ? 0.3 : 0.2),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.receipt_long_rounded, color: Colors.deepOrange, size: 20),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Total Pending Mess Dues',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? const Color(0xFFFDBA74) : const Color(0xFF9A3412),
-                                ),
-                              ),
-                            ],
-                          ),
                           Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: isDark ? 0.3 : 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.receipt_long_rounded, color: Colors.deepOrange, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Total Pending Mess Dues',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? const Color(0xFFFDBA74) : const Color(0xFF9A3412),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const DuesExpiryScreen()),
+                            );
+                          },
+                          child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: isDark ? Colors.orange.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.8),
@@ -296,8 +299,10 @@ class DashboardScreen extends StatelessWidget {
                               ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
+                    ],
+                  ),
                       const SizedBox(height: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -379,8 +384,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
-          ),
 
           // 4-KPI Metric Grid
           Row(
