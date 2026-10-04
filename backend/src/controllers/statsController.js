@@ -19,6 +19,7 @@ exports.getDashboardStats = (req, res) => {
     const occupiedBeds = hostelResidents.length;
     const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
 
+    const messPendingDues = [];
     const messExpiringSoon = [];
     const messOverdue = [];
     const rentExpiringSoon = [];
@@ -98,6 +99,7 @@ exports.getDashboardStats = (req, res) => {
       };
 
       if (student.enrolledInMess || student.memberType === 'MESS_ONLY') {
+        if (messLedger.messBalanceDue > 0) messPendingDues.push(enriched);
         if (messLedger.isOverdue) messOverdue.push(enriched);
         else if (messLedger.isUpcoming) messExpiringSoon.push(enriched);
       }
@@ -108,6 +110,12 @@ exports.getDashboardStats = (req, res) => {
       }
     });
 
+    messPendingDues.sort((a, b) => {
+      if (a.messDaysRemaining !== b.messDaysRemaining) {
+        return a.messDaysRemaining - b.messDaysRemaining;
+      }
+      return b.messBalanceDue - a.messBalanceDue;
+    });
     messExpiringSoon.sort((a, b) => a.messDaysRemaining - b.messDaysRemaining);
     messOverdue.sort((a, b) => a.messDaysRemaining - b.messDaysRemaining);
     rentExpiringSoon.sort((a, b) => a.rentDaysRemaining - b.rentDaysRemaining);
@@ -130,6 +138,7 @@ exports.getDashboardStats = (req, res) => {
       data: {
         students: {
           total: students.length,
+          messPendingDuesCount: messPendingDues.length,
           messExpiringSoonCount: messExpiringSoon.length,
           messOverdueCount: messOverdue.length,
           rentExpiringSoonCount: rentExpiringSoon.length,
@@ -156,6 +165,7 @@ exports.getDashboardStats = (req, res) => {
           currentlyOutCount
         },
         alerts: {
+          messPendingDues,
           messExpiringSoon,
           messOverdue,
           rentExpiringSoon,
@@ -174,6 +184,7 @@ exports.getDuesAndExpiries = (req, res) => {
     const orgId = extractOrgId(req);
     const students = db.getCollectionForOrg('students', orgId).filter(s => s.status !== 'ARCHIVED');
 
+    const messPendingDues = [];
     const messExpiringSoon = [];
     const messOverdue = [];
     const rentExpiringSoon = [];
@@ -256,6 +267,7 @@ exports.getDuesAndExpiries = (req, res) => {
       };
 
       if (student.enrolledInMess || student.memberType === 'MESS_ONLY') {
+        if (messLedger.messBalanceDue > 0) messPendingDues.push(enriched);
         if (messLedger.isOverdue) messOverdue.push(enriched);
         else if (messLedger.isUpcoming) messExpiringSoon.push(enriched);
       }
@@ -273,8 +285,20 @@ exports.getDuesAndExpiries = (req, res) => {
       }
     });
 
+    messPendingDues.sort((a, b) => {
+      if (a.messDaysRemaining !== b.messDaysRemaining) {
+        return a.messDaysRemaining - b.messDaysRemaining;
+      }
+      return b.messBalanceDue - a.messBalanceDue;
+    });
+    messExpiringSoon.sort((a, b) => a.messDaysRemaining - b.messDaysRemaining);
+    messOverdue.sort((a, b) => a.messDaysRemaining - b.messDaysRemaining);
+    rentExpiringSoon.sort((a, b) => a.rentDaysRemaining - b.rentDaysRemaining);
+    rentOverdue.sort((a, b) => a.rentDaysRemaining - b.rentDaysRemaining);
+
     res.json({
       success: true,
+      messPendingDues,
       messExpiringSoon,
       messOverdue,
       rentExpiringSoon,

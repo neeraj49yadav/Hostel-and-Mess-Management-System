@@ -11,6 +11,7 @@ class DashboardProvider with ChangeNotifier {
   String? _error;
 
   // Dues Hub lists
+  List<Student> _messPendingDues = [];
   List<Student> _messExpiringSoon = [];
   List<Student> _messOverdue = [];
   List<Student> _rentExpiringSoon = [];
@@ -23,6 +24,7 @@ class DashboardProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  List<Student> get messPendingDues => _messPendingDues;
   List<Student> get messExpiringSoon => _messExpiringSoon;
   List<Student> get messOverdue => _messOverdue;
   List<Student> get rentExpiringSoon => _rentExpiringSoon;
@@ -49,12 +51,14 @@ class DashboardProvider with ChangeNotifier {
   Future<void> fetchDuesAndExpiries() async {
     try {
       final res = await _api.getDuesAndExpiries();
+      final mPendingList = res['messPendingDues'] as List? ?? [];
       final mExpList = res['messExpiringSoon'] as List? ?? [];
       final mOvList = res['messOverdue'] as List? ?? [];
       final rExpList = res['rentExpiringSoon'] as List? ?? [];
       final rOvList = res['rentOverdue'] as List? ?? [];
       final actList = res['active'] as List? ?? [];
 
+      _messPendingDues = mPendingList.map((s) => Student.fromJson(s as Map<String, dynamic>)).toList();
       _messExpiringSoon = mExpList.map((s) => Student.fromJson(s as Map<String, dynamic>)).toList();
       _messOverdue = mOvList.map((s) => Student.fromJson(s as Map<String, dynamic>)).toList();
       _rentExpiringSoon = rExpList.map((s) => Student.fromJson(s as Map<String, dynamic>)).toList();

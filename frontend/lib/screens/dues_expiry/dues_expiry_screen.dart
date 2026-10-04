@@ -17,7 +17,7 @@ class DuesExpiryScreen extends StatefulWidget {
 
 class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  String _messSubFilter = 'ALL'; // 'ALL', 'OVERDUE', 'UPCOMING'
+  String _messSubFilter = 'PENDING_DUES'; // 'PENDING_DUES', 'OVERDUE', 'UPCOMING', 'ALL'
   final TextEditingController _messSearchCtrl = TextEditingController();
 
   @override
@@ -55,7 +55,11 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
     final dash = context.watch<DashboardProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final totalMessAlerts = dash.messExpiringSoon.length + dash.messOverdue.length;
+    final totalMessAlerts = {
+      ...dash.messPendingDues.map((s) => s.id),
+      ...dash.messOverdue.map((s) => s.id),
+      ...dash.messExpiringSoon.map((s) => s.id),
+    }.length;
     final totalRentAlerts = dash.rentExpiringSoon.length + dash.rentOverdue.length;
 
     return Scaffold(
@@ -133,12 +137,20 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
   // 🍽️ Dedicated Mess Tab with Search and Overdue/Upcoming Separation (Req 6 & 7)
   Widget _buildMessTab(DashboardProvider dash, bool isDark) {
     List<Student> baseList;
-    if (_messSubFilter == 'OVERDUE') {
+    if (_messSubFilter == 'PENDING_DUES') {
+      baseList = dash.messPendingDues;
+    } else if (_messSubFilter == 'OVERDUE') {
       baseList = dash.messOverdue;
     } else if (_messSubFilter == 'UPCOMING') {
       baseList = dash.messExpiringSoon;
     } else {
-      baseList = [...dash.messOverdue, ...dash.messExpiringSoon];
+      final seenIds = <String>{};
+      baseList = [];
+      for (final s in [...dash.messPendingDues, ...dash.messOverdue, ...dash.messExpiringSoon]) {
+        if (seenIds.add(s.id)) {
+          baseList.add(s);
+        }
+      }
     }
 
     final q = _messSearchCtrl.text.trim().toLowerCase();
@@ -150,6 +162,12 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                 s.roomNumber.toLowerCase().contains(q) ||
                 s.mealPlanType.toLowerCase().contains(q);
           }).toList();
+
+    final allUniqueCount = {
+      ...dash.messPendingDues.map((s) => s.id),
+      ...dash.messOverdue.map((s) => s.id),
+      ...dash.messExpiringSoon.map((s) => s.id),
+    }.length;
 
     return Column(
       children: [
@@ -185,19 +203,21 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                 child: Row(
                   children: [
                     ChoiceChip(
-                      label: Text('All Alerts (${dash.messOverdue.length + dash.messExpiringSoon.length})'),
-                      selected: _messSubFilter == 'ALL',
-                      selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                      label: Text('🟠 Pending Dues (${dash.messPendingDues.length})'),
+                      selected: _messSubFilter == 'PENDING_DUES',
+                      selectedColor: Colors.orange.withValues(alpha: 0.25),
                       labelStyle: TextStyle(
                         fontSize: 12,
-                        fontWeight: _messSubFilter == 'ALL' ? FontWeight.bold : FontWeight.normal,
-                        color: _messSubFilter == 'ALL' ? AppColors.secondary : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                        fontWeight: _messSubFilter == 'PENDING_DUES' ? FontWeight.bold : FontWeight.normal,
+                        color: _messSubFilter == 'PENDING_DUES'
+                            ? (isDark ? Colors.orangeAccent : Colors.orange.shade900)
+                            : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
                       ),
-                      onSelected: (_) => setState(() => _messSubFilter = 'ALL'),
+                      onSelected: (_) => setState(() => _messSubFilter = 'PENDING_DUES'),
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
-                      label: Text('🔴 Overdue / Current Due (${dash.messOverdue.length})'),
+                      label: Text('🔴 Overdue (${dash.messOverdue.length})'),
                       selected: _messSubFilter == 'OVERDUE',
                       selectedColor: AppColors.danger.withValues(alpha: 0.2),
                       labelStyle: TextStyle(
@@ -209,19 +229,73 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
-                      label: Text('🟡 Upcoming Dues (${dash.messExpiringSoon.length})'),
+                      label: Text('🟡 Upcoming Renewals (${dash.messExpiringSoon.length})'),
                       selected: _messSubFilter == 'UPCOMING',
                       selectedColor: Colors.amber.withValues(alpha: 0.2),
                       labelStyle: TextStyle(
                         fontSize: 12,
                         fontWeight: _messSubFilter == 'UPCOMING' ? FontWeight.bold : FontWeight.normal,
-                        color: _messSubFilter == 'UPCOMING' ? Colors.orange.shade800 : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                        color: _messSubFilter == 'UPCOMING'
+                            ? (isDark ? Colors.amberAccent : Colors.orange.shade800)
+                            : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
                       ),
                       onSelected: (_) => setState(() => _messSubFilter = 'UPCOMING'),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('All Alerts ($allUniqueCount)'),
+                      selected: _messSubFilter == 'ALL',
+                      selectedColor: AppColors.secondary.withValues(alpha: 0.25),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _messSubFilter == 'ALL' ? FontWeight.bold : FontWeight.normal,
+                        color: _messSubFilter == 'ALL' ? AppColors.secondary : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                      ),
+                      onSelected: (_) => setState(() => _messSubFilter = 'ALL'),
                     ),
                   ],
                 ),
               ),
+              if (_messSubFilter == 'PENDING_DUES' && dash.messPendingDues.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: isDark ? 0.15 : 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.pending_actions_rounded, color: isDark ? Colors.amber.shade300 : Colors.orange.shade800, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Total Pending Mess Dues',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                              ),
+                            ),
+                            Text(
+                              '${AppFormatters.formatCurrency(dash.messPendingDues.fold<double>(0.0, (sum, s) => sum + s.messBalanceDue))} (${dash.messPendingDues.length} Students)',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.amber.shade200 : Colors.orange.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -230,11 +304,13 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
           child: _buildDuesList(
             items: filtered,
             type: 'MESS',
-            emptyMessage: _messSubFilter == 'OVERDUE'
-                ? 'No overdue mess subscriptions! All clear.'
-                : (_messSubFilter == 'UPCOMING'
-                    ? 'No upcoming mess renewals in the next 5 days.'
-                    : 'All monthly mess subscriptions are currently active!'),
+            emptyMessage: _messSubFilter == 'PENDING_DUES'
+                ? 'No pending mess dues! All student dues are cleared.'
+                : (_messSubFilter == 'OVERDUE'
+                    ? 'No overdue mess subscriptions! All clear.'
+                    : (_messSubFilter == 'UPCOMING'
+                        ? 'No upcoming mess renewals in the next 5 days.'
+                        : 'All monthly mess subscriptions are currently active!')),
             isDark: isDark,
           ),
         ),
@@ -285,6 +361,19 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
             : (isRentType ? student.rentDynamicStatus : student.dynamicStatus);
 
         final badge = AppFormatters.getStatusBadge(dynamicStatus, isDark: isDark);
+        Color badgeBg = badge.bgColor;
+        Color badgeText = badge.textColor;
+        String badgeLabel = isMessType ? (student.messStatusLabel.isNotEmpty ? student.messStatusLabel : badge.label) : (isRentType ? student.rentStatusLabel : badge.label);
+
+        if (isMessType && student.messBalanceDue > 0) {
+          if (student.isOverdueMess) {
+            badgeBg = isDark ? const Color(0xFF7F1D1D).withValues(alpha: 0.5) : const Color(0xFFFEE2E2);
+            badgeText = isDark ? const Color(0xFFF87171) : const Color(0xFF991B1B);
+          } else {
+            badgeBg = isDark ? const Color(0xFF78350F).withValues(alpha: 0.5) : const Color(0xFFFEF3C7);
+            badgeText = isDark ? const Color(0xFFFBBF24) : const Color(0xFF92400E);
+          }
+        }
 
         return Card(
           child: Padding(
@@ -345,12 +434,12 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: badge.bgColor,
+                        color: badgeBg,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        isMessType ? student.messStatusLabel : (isRentType ? student.rentStatusLabel : badge.label),
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: badge.textColor),
+                        badgeLabel,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: badgeText),
                       ),
                     ),
                   ],
@@ -364,8 +453,12 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                       Expanded(
                         child: _buildFeeColumn(
                           'Monthly Mess Plan',
-                          '${AppFormatters.formatCurrency(student.monthlyMessFee)} / mo',
-                          'Valid till: ${AppFormatters.formatDate(student.messExpiryDate)}',
+                          student.messBalanceDue > 0
+                              ? '${AppFormatters.formatCurrency(student.messBalanceDue)} due'
+                              : '${AppFormatters.formatCurrency(student.monthlyMessFee)} / mo',
+                          student.messBalanceDue > 0
+                              ? 'Plan: ${AppFormatters.formatCurrency(student.monthlyMessFee)}/mo • Paid: ${AppFormatters.formatCurrency(student.totalMessPaid)}'
+                              : 'Valid till: ${AppFormatters.formatDate(student.messExpiryDate)}',
                           isHighlight: isMessType,
                           isDark: isDark,
                         ),

@@ -2,6 +2,7 @@ import 'student.dart';
 
 class DashboardStats {
   final int totalStudents;
+  final int messPendingDuesCount;
   final int messExpiringSoonCount;
   final int messOverdueCount;
   final int rentExpiringSoonCount;
@@ -19,6 +20,7 @@ class DashboardStats {
   final double netProfitBalance;
   final bool isProfitable;
   final int currentlyOutCount;
+  final List<Student> messPendingDues;
   final List<Student> messExpiringSoon;
   final List<Student> messOverdue;
   final List<Student> rentExpiringSoon;
@@ -29,6 +31,7 @@ class DashboardStats {
 
   DashboardStats({
     required this.totalStudents,
+    this.messPendingDuesCount = 0,
     required this.messExpiringSoonCount,
     required this.messOverdueCount,
     required this.rentExpiringSoonCount,
@@ -46,6 +49,7 @@ class DashboardStats {
     required this.netProfitBalance,
     required this.isProfitable,
     required this.currentlyOutCount,
+    this.messPendingDues = const [],
     required this.messExpiringSoon,
     required this.messOverdue,
     required this.rentExpiringSoon,
@@ -59,6 +63,7 @@ class DashboardStats {
     final leavesMap = json['leaves'] as Map<String, dynamic>? ?? {};
     final alertsMap = json['alerts'] as Map<String, dynamic>? ?? {};
 
+    final messPendingRaw = alertsMap['messPendingDues'] as List? ?? [];
     final messExpRaw = alertsMap['messExpiringSoon'] as List? ?? [];
     final messOverdueRaw = alertsMap['messOverdue'] as List? ?? [];
     final rentExpRaw = alertsMap['rentExpiringSoon'] as List? ?? [];
@@ -66,6 +71,7 @@ class DashboardStats {
 
     return DashboardStats(
       totalStudents: (studentsMap['total'] as num?)?.toInt() ?? 0,
+      messPendingDuesCount: (studentsMap['messPendingDuesCount'] as num?)?.toInt() ?? 0,
       messExpiringSoonCount: (studentsMap['messExpiringSoonCount'] as num?)?.toInt() ?? 0,
       messOverdueCount: (studentsMap['messOverdueCount'] as num?)?.toInt() ?? 0,
       rentExpiringSoonCount: (studentsMap['rentExpiringSoonCount'] as num?)?.toInt() ?? 0,
@@ -83,6 +89,7 @@ class DashboardStats {
       netProfitBalance: (finMap['netProfitBalance'] as num?)?.toDouble() ?? 0.0,
       isProfitable: finMap['isProfitable'] ?? true,
       currentlyOutCount: (leavesMap['currentlyOutCount'] as num?)?.toInt() ?? 0,
+      messPendingDues: messPendingRaw.map((e) => Student.fromJson(e as Map<String, dynamic>)).toList(),
       messExpiringSoon: messExpRaw.map((e) => Student.fromJson(e as Map<String, dynamic>)).toList(),
       messOverdue: messOverdueRaw.map((e) => Student.fromJson(e as Map<String, dynamic>)).toList(),
       rentExpiringSoon: rentExpRaw.map((e) => Student.fromJson(e as Map<String, dynamic>)).toList(),
