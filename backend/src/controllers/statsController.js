@@ -12,6 +12,7 @@ exports.getDashboardStats = (req, res) => {
     const leaveLogs = db.getCollectionForOrg('leave_logs', orgId);
 
     const currentMonth = new Date().toISOString().substring(0, 7);
+    const org = (db.getCollection('organizations') || []).find(o => o.id === orgId) || {};
 
     // Bed metrics: Only count students staying in the hostel rooms
     const hostelResidents = students.filter(s => s.memberType === 'HOSTEL_RESIDENT');
@@ -95,13 +96,37 @@ exports.getDashboardStats = (req, res) => {
           totalRentAgreed,
           totalRentPaid,
           rentBalanceDue
-        })
+        }, 'BOTH', org),
+        messWhatsAppReminder: generateWhatsAppReminder({
+          ...student,
+          messStartDate: student.messStartDate,
+          messExpiryDate: messLedger.messExpiryDate,
+          messBalanceDue: messLedger.messBalanceDue,
+          totalRentAgreed,
+          totalRentPaid,
+          rentBalanceDue
+        }, 'MESS', org),
+        rentWhatsAppReminder: generateWhatsAppReminder({
+          ...student,
+          messStartDate: student.messStartDate,
+          messExpiryDate: messLedger.messExpiryDate,
+          messBalanceDue: messLedger.messBalanceDue,
+          totalRentAgreed,
+          totalRentPaid,
+          rentBalanceDue
+        }, 'RENT', org)
       };
 
       if (student.enrolledInMess || student.memberType === 'MESS_ONLY') {
-        if (messLedger.messBalanceDue > 0) messPendingDues.push(enriched);
-        if (messLedger.isOverdue) messOverdue.push(enriched);
-        else if (messLedger.isUpcoming) messExpiringSoon.push(enriched);
+        if (messLedger.isOverdue) {
+          messOverdue.push(enriched);
+        } else if (messLedger.messBalanceDue > 0) {
+          messPendingDues.push(enriched);
+        }
+
+        if (!messLedger.isOverdue && messLedger.isUpcoming && messLedger.messBalanceDue <= 0) {
+          messExpiringSoon.push(enriched);
+        }
       }
 
       if (student.memberType === 'HOSTEL_RESIDENT') {
@@ -133,6 +158,12 @@ exports.getDashboardStats = (req, res) => {
     const netProfitBalance = totalInflow - totalMessExpense;
     const currentlyOutCount = leaveLogs.filter(l => l.status === 'OUT').length;
 
+    // Total Mess Pending Dues (including overdues)
+    const totalCurrentMessDuesAmount = messPendingDues.reduce((acc, s) => acc + (s.messBalanceDue || 0), 0);
+    const totalOverdueMessDuesAmount = messOverdue.reduce((acc, s) => acc + (s.messBalanceDue || 0), 0);
+    const totalPendingMessDuesAmount = totalCurrentMessDuesAmount + totalOverdueMessDuesAmount;
+    const totalPendingMessStudentsCount = messPendingDues.length + messOverdue.length;
+
     res.json({
       success: true,
       data: {
@@ -141,6 +172,10 @@ exports.getDashboardStats = (req, res) => {
           messPendingDuesCount: messPendingDues.length,
           messExpiringSoonCount: messExpiringSoon.length,
           messOverdueCount: messOverdue.length,
+          totalPendingMessDuesCount: totalPendingMessStudentsCount,
+          totalPendingMessDuesAmount,
+          totalCurrentMessDuesAmount,
+          totalOverdueMessDuesAmount,
           rentExpiringSoonCount: rentExpiringSoon.length,
           rentOverdueCount: rentOverdue.length,
           totalOverdueCount: messOverdue.length + rentOverdue.length
@@ -159,7 +194,11 @@ exports.getDashboardStats = (req, res) => {
           totalInflow,
           totalMessExpense,
           netProfitBalance,
-          isProfitable: netProfitBalance >= 0
+          isProfitable: netProfitBalance >= 0,
+          totalPendingMessDuesAmount,
+          totalCurrentMessDuesAmount,
+          totalOverdueMessDuesAmount,
+          totalPendingMessStudentsCount
         },
         leaves: {
           currentlyOutCount
@@ -182,6 +221,7 @@ exports.getDashboardStats = (req, res) => {
 exports.getDuesAndExpiries = (req, res) => {
   try {
     const orgId = extractOrgId(req);
+    const org = (db.getCollection('organizations') || []).find(o => o.id === orgId) || {};
     const students = db.getCollectionForOrg('students', orgId).filter(s => s.status !== 'ARCHIVED');
 
     const messPendingDues = [];
@@ -263,13 +303,37 @@ exports.getDuesAndExpiries = (req, res) => {
           totalRentAgreed,
           totalRentPaid,
           rentBalanceDue
-        })
+        }, 'BOTH', org),
+        messWhatsAppReminder: generateWhatsAppReminder({
+          ...student,
+          messStartDate: student.messStartDate,
+          messExpiryDate: messLedger.messExpiryDate,
+          messBalanceDue: messLedger.messBalanceDue,
+          totalRentAgreed,
+          totalRentPaid,
+          rentBalanceDue
+        }, 'MESS', org),
+        rentWhatsAppReminder: generateWhatsAppReminder({
+          ...student,
+          messStartDate: student.messStartDate,
+          messExpiryDate: messLedger.messExpiryDate,
+          messBalanceDue: messLedger.messBalanceDue,
+          totalRentAgreed,
+          totalRentPaid,
+          rentBalanceDue
+        }, 'RENT', org)
       };
 
       if (student.enrolledInMess || student.memberType === 'MESS_ONLY') {
-        if (messLedger.messBalanceDue > 0) messPendingDues.push(enriched);
-        if (messLedger.isOverdue) messOverdue.push(enriched);
-        else if (messLedger.isUpcoming) messExpiringSoon.push(enriched);
+        if (messLedger.isOverdue) {
+          messOverdue.push(enriched);
+        } else if (messLedger.messBalanceDue > 0) {
+          messPendingDues.push(enriched);
+        }
+
+        if (!messLedger.isOverdue && messLedger.isUpcoming && messLedger.messBalanceDue <= 0) {
+          messExpiringSoon.push(enriched);
+        }
       }
 
       if (student.memberType === 'HOSTEL_RESIDENT') {
@@ -296,6 +360,11 @@ exports.getDuesAndExpiries = (req, res) => {
     rentExpiringSoon.sort((a, b) => a.rentDaysRemaining - b.rentDaysRemaining);
     rentOverdue.sort((a, b) => a.rentDaysRemaining - b.rentDaysRemaining);
 
+    const totalCurrentMessDuesAmount = messPendingDues.reduce((acc, s) => acc + (s.messBalanceDue || 0), 0);
+    const totalOverdueMessDuesAmount = messOverdue.reduce((acc, s) => acc + (s.messBalanceDue || 0), 0);
+    const totalPendingMessDuesAmount = totalCurrentMessDuesAmount + totalOverdueMessDuesAmount;
+    const totalPendingMessStudentsCount = messPendingDues.length + messOverdue.length;
+
     res.json({
       success: true,
       messPendingDues,
@@ -303,7 +372,11 @@ exports.getDuesAndExpiries = (req, res) => {
       messOverdue,
       rentExpiringSoon,
       rentOverdue,
-      active
+      active,
+      totalPendingMessDuesAmount,
+      totalCurrentMessDuesAmount,
+      totalOverdueMessDuesAmount,
+      totalPendingMessStudentsCount
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

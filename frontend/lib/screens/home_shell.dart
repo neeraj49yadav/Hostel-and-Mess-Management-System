@@ -236,9 +236,8 @@ class _HomeShellState extends State<HomeShell> {
     final theme = context.watch<ThemeProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final expiringCount = dash.stats?.expiringSoonCount ?? 0;
     final overdueCount = dash.stats?.overdueCount ?? 0;
-    final totalAlerts = expiringCount + overdueCount;
+    final totalAlerts = dash.totalAlertsCount;
 
     return Scaffold(
       appBar: AppBar(

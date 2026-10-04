@@ -394,7 +394,7 @@ function calculateMessExpiryDate(messStartDateStr, totalMessPaid, monthlyMessFee
 /**
  * Generate a pre-formatted WhatsApp payment reminder text
  */
-function generateWhatsAppReminder(student, feeType = 'BOTH', hostelName = 'My Hostel & Mess') {
+function generateWhatsAppReminder(student, feeType = 'BOTH', orgInfo = null) {
   const {
     name,
     roomNumber,
@@ -411,37 +411,104 @@ function generateWhatsAppReminder(student, feeType = 'BOTH', hostelName = 'My Ho
   } = student;
 
   const isResident = memberType === 'HOSTEL_RESIDENT';
-  const messStatus = calculateCycleStatus(messExpiryDate, 5);
+  const isEnrolledMess = enrolledInMess !== false && memberType !== 'HOSTEL_ONLY';
+  const isMessOnly = memberType === 'MESS_ONLY' || (!isResident && isEnrolledMess);
+  const isHostelOnly = isResident && !isEnrolledMess;
 
+  // Resolve hostel & mess names from orgInfo or student metadata
+  let hostelName = 'Hostel';
+  let messName = 'Mess';
+  if (typeof orgInfo === 'string') {
+    hostelName = orgInfo;
+    messName = orgInfo;
+  } else if (orgInfo && typeof orgInfo === 'object') {
+    hostelName = orgInfo.hostelName || orgInfo.name || 'Hostel';
+    messName = orgInfo.messName || (orgInfo.name ? `${orgInfo.name.replace(/Hostel|PG|Residency/gi, '').trim()} Mess`.trim() : 'Mess') || orgInfo.name || 'Mess';
+  } else if (student.orgHostelName || student.orgMessName) {
+    hostelName = student.orgHostelName || 'Hostel';
+    messName = student.orgMessName || 'Mess';
+  }
+
+  // Determine entity name & signature based on context:
+  // 1. Mess section (feeType === 'MESS') -> Mess Name
+  // 2. Hostel section (feeType === 'RENT') -> Hostel Name
+  // 3. Both (feeType === 'BOTH'):
+  //    - Mess only student -> Mess Name
+  //    - Hostel only student -> Hostel Name
+  //    - Common student (both) -> Hostel Name & Mess Name
+  let senderName = '';
+  let notificationSubject = '';
+
+  if (feeType === 'MESS') {
+    senderName = messName;
+    notificationSubject = 'Mess subscription';
+  } else if (feeType === 'RENT') {
+    senderName = hostelName;
+    notificationSubject = 'Hostel Rent';
+  } else {
+    // feeType === 'BOTH'
+    if (isMessOnly) {
+      senderName = messName;
+      notificationSubject = 'Mess subscription';
+    } else if (isHostelOnly) {
+      senderName = hostelName;
+      notificationSubject = 'Hostel Rent';
+    } else {
+      senderName = hostelName.toLowerCase() === messName.toLowerCase()
+        ? hostelName
+        : `${hostelName} & ${messName}`;
+      notificationSubject = 'Hostel & Mess';
+    }
+  }
+
+  const messStatus = calculateCycleStatus(messExpiryDate, 5);
   const greetingIdentifier = isResident && roomNumber ? `Room No: ${roomNumber}` : 'Day Scholar';
 
-  let message = `🔔 *Payment Reminder - ${hostelName}*\n\n` +
+  let message = `🔔 *Payment Reminder - ${senderName}*\n\n` +
     `Dear ${name} (${greetingIdentifier}),\n` +
-    `We are notifying you regarding your pending ${isResident ? 'Hostel / Mess' : 'Mess subscription'} dues.\n\n` +
+    `We are notifying you regarding your pending ${notificationSubject} dues.\n\n` +
     `📋 *Current Status:*\n`;
 
-  if (isResident) {
-    message += `• *Hostel Rent*: Total: ₹${totalRentAgreed} | Paid: ₹${totalRentPaid} | *Remaining Due: ₹${rentBalanceDue.toFixed(0)}*\n`;
-  }
+  if (feeType === 'MESS') {
+    const messDueText = messBalanceDue > 0
+      ? `• *Pending Mess Due: ₹${messBalanceDue.toFixed(0)}*`
+      : '• *Mess Status: Fully Paid*';
+    message += `• *Mess Plan (Monthly)*: ₹${monthlyMessFee}/mo (Valid till: ${messExpiryDate || 'Due'} • ${messStatus.label})\n${messDueText}\n\n`;
+    if (messBalanceDue > 0) {
+      message += `👉 *Pending Monthly Mess Fee*: ₹${messBalanceDue.toFixed(0)}\n`;
+    } else if (messStatus.status !== 'ACTIVE') {
+      message += `👉 *Pending Monthly Mess Renewal*: ₹${monthlyMessFee}\n`;
+    }
+  } else if (feeType === 'RENT') {
+    message += `• *Hostel Rent*: Total: ₹${totalRentAgreed} | Paid: ₹${totalRentPaid} | *Remaining Due: ₹${rentBalanceDue.toFixed(0)}*\n\n`;
+    if (rentBalanceDue > 0) {
+      message += `👉 *Pending Rent Balance*: ₹${rentBalanceDue.toFixed(0)}\n`;
+    }
+  } else {
+    // Combined / General reminder
+    if (isResident) {
+      message += `• *Hostel Rent*: Total: ₹${totalRentAgreed} | Paid: ₹${totalRentPaid} | *Remaining Due: ₹${rentBalanceDue.toFixed(0)}*\n`;
+    }
+    if (isEnrolledMess) {
+      const messDueText = messBalanceDue > 0
+        ? `• *Pending Mess Due: ₹${messBalanceDue.toFixed(0)}*`
+        : '• *Mess Status: Fully Paid*';
+      message += `• *Mess Plan (Monthly)*: ₹${monthlyMessFee}/mo (Valid till: ${messExpiryDate || 'Due'} • ${messStatus.label})\n${messDueText}\n`;
+    }
+    message += `\n`;
 
-  if (enrolledInMess !== false) {
-    const messDueText = messBalanceDue > 0 ? `• *Pending Mess Due: ₹${messBalanceDue.toFixed(0)}*` : '• *Mess Status: Fully Paid*';
-    message += `• *Mess Plan (Monthly)*: ₹${monthlyMessFee}/mo (Valid till: ${messExpiryDate || 'Due'} • ${messStatus.label})\n${messDueText}\n`;
-  }
-
-  message += `\n`;
-
-  if (isResident && rentBalanceDue > 0) {
-    message += `👉 *Pending Rent Balance*: ₹${rentBalanceDue.toFixed(0)}\n`;
-  }
-  if (enrolledInMess !== false && messBalanceDue > 0) {
-    message += `👉 *Pending Monthly Mess Fee*: ₹${messBalanceDue.toFixed(0)}\n`;
-  } else if (enrolledInMess !== false && messStatus.status !== 'ACTIVE') {
-    message += `👉 *Pending Monthly Mess Renewal*: ₹${monthlyMessFee}\n`;
+    if (isResident && rentBalanceDue > 0) {
+      message += `👉 *Pending Rent Balance*: ₹${rentBalanceDue.toFixed(0)}\n`;
+    }
+    if (isEnrolledMess && messBalanceDue > 0) {
+      message += `👉 *Pending Monthly Mess Fee*: ₹${messBalanceDue.toFixed(0)}\n`;
+    } else if (isEnrolledMess && messStatus.status !== 'ACTIVE') {
+      message += `👉 *Pending Monthly Mess Renewal*: ₹${monthlyMessFee}\n`;
+    }
   }
 
   message += `\nKindly pay at the admin office or via UPI to keep your records clear.\n\n` +
-    `Thank you,\n*Hostel & Mess Management*`;
+    `Thank you,\n*${senderName}*`;
 
   // Encode for WhatsApp URI
   const encodedText = encodeURIComponent(message);
@@ -455,18 +522,38 @@ function generateWhatsAppReminder(student, feeType = 'BOTH', hostelName = 'My Ho
     message,
     whatsappUrl,
     targetPhone: formattedPhone,
-    messStatus
+    messStatus,
+    senderName
   };
 }
 
 /**
  * Generate a pre-formatted WhatsApp payment confirmation receipt
  */
-function generateWhatsAppReceipt(payment, student, hostelName = 'City Pride Hostel & Mess') {
-  let message = `✅ *Payment Receipt - ${hostelName}*\n\n` +
+function generateWhatsAppReceipt(payment, student, orgInfo = null) {
+  let hostelName = 'Hostel';
+  let messName = 'Mess';
+  if (typeof orgInfo === 'string') {
+    hostelName = orgInfo;
+    messName = orgInfo;
+  } else if (orgInfo && typeof orgInfo === 'object') {
+    hostelName = orgInfo.hostelName || orgInfo.name || 'Hostel';
+    messName = orgInfo.messName || (orgInfo.name ? `${orgInfo.name.replace(/Hostel|PG|Residency/gi, '').trim()} Mess`.trim() : 'Mess') || orgInfo.name || 'Mess';
+  }
+
+  let senderName = hostelName;
+  if (payment.feeType === 'MESS') {
+    senderName = messName;
+  } else if (payment.feeType === 'BOTH') {
+    senderName = hostelName.toLowerCase() === messName.toLowerCase()
+      ? hostelName
+      : `${hostelName} & ${messName}`;
+  }
+
+  let message = `✅ *Payment Receipt - ${senderName}*\n\n` +
     `Receipt No: *${payment.receiptNo}*\n` +
     `Date: ${new Date(payment.paymentDate).toLocaleDateString('en-IN')}\n\n` +
-    `👤 Student: ${student.name} (Room: ${student.roomNumber})\n` +
+    `👤 Student: ${student.name} (Room: ${student.roomNumber || 'N/A'})\n` +
     `💵 Amount Paid: *₹${payment.amount}* via ${payment.paymentMode}\n` +
     `📌 Fee Type: ${payment.feeType}\n`;
 
@@ -485,18 +572,22 @@ function generateWhatsAppReceipt(payment, student, hostelName = 'City Pride Host
     message += `🍽️ Mess Subscription Paid: ₹${payment.messAmount} (Valid till: ${student.messExpiryDate || 'Next month'})\n`;
   }
 
-  message += `🗓️ Details: *${payment.cycleEndDate}*\n` +
-    `✍️ Received By: ${payment.collectedByAdminName}\n\n` +
-    `Thank you for your prompt payment!`;
+  message += `🗓️ Details: *${payment.cycleEndDate || ''}*\n` +
+    `✍️ Received By: ${payment.collectedByAdminName || 'Admin'}\n\n` +
+    `Thank you for your prompt payment!\n\n` +
+    `Thank you,\n*${senderName}*`;
 
   const encodedText = encodeURIComponent(message);
-  const targetPhone = student.phone || student.parentPhone || '';
-  const formattedPhone = targetPhone.startsWith('91') ? targetPhone : `91${targetPhone.replace(/[^0-9]/g, '')}`;
+  let targetPhone = student.phone || student.parentPhone || '';
+  targetPhone = targetPhone.replace(/[^0-9]/g, '');
+  if (targetPhone.startsWith('0')) targetPhone = targetPhone.replace(/^0+/, '');
+  const formattedPhone = targetPhone.startsWith('91') ? targetPhone : `91${targetPhone}`;
   const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedText}`;
 
   return {
     message,
-    whatsappUrl
+    whatsappUrl,
+    senderName
   };
 }
 

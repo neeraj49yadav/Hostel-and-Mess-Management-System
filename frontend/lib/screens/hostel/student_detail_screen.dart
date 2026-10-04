@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/reminder_helper.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/student.dart';
 import '../../models/payment.dart';
@@ -624,9 +625,17 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                             label: const Text('WhatsApp'),
                             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366)),
                             onPressed: () {
-                              final reminder = s.whatsappReminder;
-                              final message = reminder?['message'] ??
-                                  'Hi ${s.name}, regarding your Hostel & Mess payment status.';
+                              final auth = context.read<AuthProvider>();
+                              final org = auth.currentOrganization;
+                              final hostelName = org?.displayHostelName ?? 'Hostel';
+                              final messName = org?.displayMessName ?? 'Mess';
+                              final message = s.whatsappReminder?['message'] ??
+                                  ReminderHelper.buildReminderMessage(
+                                    student: s,
+                                    feeType: 'BOTH',
+                                    hostelName: hostelName,
+                                    messName: messName,
+                                  );
                               UrlHelper.launchWhatsApp(phone: s.phone, message: message);
                             },
                           ),

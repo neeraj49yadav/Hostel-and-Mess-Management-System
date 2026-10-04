@@ -593,10 +593,106 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (isOrgAdmin)
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, color: AppColors.primaryLight),
-                  tooltip: 'Edit Hostel Name & Logo',
+                  tooltip: 'Edit Hostel & Mess Names, Logo',
                   onPressed: () => _showEditOrganizationModal(context, auth, org),
                 ),
             ],
+          ),
+          const SizedBox(height: 14),
+          // 🏢 Separate Section for Hostel & Mess Names (For clear detection & detection in reminders)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? AppColors.borderDark : AppColors.borderLight,
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.hotel_rounded, size: 16, color: AppColors.primary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hostel Name (Hostel Section Reminders)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            org.displayHostelName,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Divider(height: 1),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppColors.secondary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.restaurant_rounded, size: 16, color: AppColors.secondary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Mess Name (Mess Section Reminders)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            org.displayMessName,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -708,6 +804,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // --- Edit Hostel Details Modal ---
   void _showEditOrganizationModal(BuildContext context, AuthProvider auth, Organization org) {
     final nameCtrl = TextEditingController(text: org.name);
+    final hostelNameCtrl = TextEditingController(text: org.displayHostelName);
+    final messNameCtrl = TextEditingController(text: org.displayMessName);
     final cityCtrl = TextEditingController(text: org.city);
     final phoneCtrl = TextEditingController(text: org.contactPhone);
     String? currentLogo = org.logo;
@@ -865,17 +963,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Hostel Name
+                    // Hostel Name Field
                     TextFormField(
-                      controller: nameCtrl,
+                      controller: hostelNameCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Hostel / PG Name *',
-                        hintText: 'e.g. Yaduvanshi Hostel & Mess',
-                        prefixIcon: Icon(Icons.domain_rounded),
+                        labelText: 'Hostel Name *',
+                        hintText: 'e.g. Galaxy Prime Residency',
+                        prefixIcon: Icon(Icons.hotel_rounded),
+                        helperText: 'Used in Hostel Rent WhatsApp reminders & receipts',
                       ),
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) {
                           return 'Hostel name is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Mess Name Field
+                    TextFormField(
+                      controller: messNameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Mess Name *',
+                        hintText: 'e.g. Galaxy Mess',
+                        prefixIcon: Icon(Icons.restaurant_rounded),
+                        helperText: 'Used in Mess Monthly WhatsApp reminders & receipts',
+                      ),
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) {
+                          return 'Mess name is required';
                         }
                         return null;
                       },
@@ -923,9 +1040,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   setModalState(() => isSaving = true);
                                   final messenger = ScaffoldMessenger.of(context);
                                   final nav = Navigator.of(ctx);
-                                  final updatedName = nameCtrl.text.trim();
+                                  final updatedHostelName = hostelNameCtrl.text.trim();
+                                  final updatedMessName = messNameCtrl.text.trim();
+                                  final updatedName = updatedHostelName.isNotEmpty ? updatedHostelName : nameCtrl.text.trim();
                                   final success = await auth.updateOrganization(
                                     name: updatedName,
+                                    hostelName: updatedHostelName,
+                                    messName: updatedMessName,
                                     logo: currentLogo,
                                     city: cityCtrl.text.trim(),
                                     contactPhone: phoneCtrl.text.trim(),

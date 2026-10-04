@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/reminder_helper.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/student.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/hostel_provider.dart';
 import '../../widgets/student_avatar.dart';
 import '../../widgets/remove_student_dialog.dart';
@@ -407,9 +409,17 @@ class _StudentListScreenState extends State<StudentListScreen> {
                     icon: const Icon(Icons.chat_bubble_outline, color: Color(0xFF25D366), size: 20),
                     tooltip: 'WhatsApp Reminder',
                     onPressed: () async {
-                      final reminder = student.whatsappReminder;
-                      final message = reminder?['message'] ??
-                          'Hi ${student.name}, monthly Hostel & Mess plan is due. Total: ₹${student.totalMonthlyFee}.';
+                      final auth = context.read<AuthProvider>();
+                      final org = auth.currentOrganization;
+                      final hostelName = org?.displayHostelName ?? 'Hostel';
+                      final messName = org?.displayMessName ?? 'Mess';
+                      final message = student.whatsappReminder?['message'] ??
+                          ReminderHelper.buildReminderMessage(
+                            student: student,
+                            feeType: 'BOTH',
+                            hostelName: hostelName,
+                            messName: messName,
+                          );
                       await UrlHelper.launchWhatsApp(phone: student.phone, message: message);
                     },
                   ),

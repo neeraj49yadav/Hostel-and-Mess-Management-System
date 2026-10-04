@@ -392,12 +392,16 @@ class ApiService {
     String? logo,
     String? city,
     String? contactPhone,
+    String? hostelName,
+    String? messName,
   }) async {
     final res = await _put(ApiConstants.updateOrganization, {
       'name': name.trim(),
       if (logo != null) 'logo': logo.trim(),
       if (city != null) 'city': city.trim(),
       if (contactPhone != null) 'contactPhone': contactPhone.trim(),
+      if (hostelName != null) 'hostelName': hostelName.trim(),
+      if (messName != null) 'messName': messName.trim(),
     });
     return res;
   }

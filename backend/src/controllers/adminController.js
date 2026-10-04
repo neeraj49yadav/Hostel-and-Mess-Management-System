@@ -72,6 +72,8 @@ exports.registerOrganization = (req, res) => {
       code: formattedCode,
       city: city ? city.trim() : 'Main Campus',
       contactPhone: (contactPhone || adminPhone || '').trim(),
+      hostelName: (req.body.hostelName || orgName).trim(),
+      messName: (req.body.messName || `${orgName.replace(/Hostel|PG|Residency/gi, '').trim()} Mess`.trim() || orgName).trim(),
       createdAt: new Date().toISOString()
     };
 
@@ -622,7 +624,7 @@ exports.updateProfile = async (req, res) => {
 exports.updateOrganization = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
-    const { name, logo, city, contactPhone } = req.body;
+    const { name, logo, city, contactPhone, hostelName, messName } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Hostel / Organization name is required' });
@@ -644,6 +646,8 @@ exports.updateOrganization = async (req, res) => {
         code: (req.admin?.orgCode || 'CITYPRIDE').toUpperCase(),
         city: (city || 'Main Campus').trim(),
         contactPhone: (contactPhone || '').trim(),
+        hostelName: (hostelName || name).trim(),
+        messName: (messName || `${name.replace(/Hostel|PG|Residency/gi, '').trim()} Mess`.trim() || name).trim(),
         logo: processedLogo || '',
         createdAt: new Date().toISOString()
       };
@@ -654,6 +658,8 @@ exports.updateOrganization = async (req, res) => {
       organizations[index].name = name.trim();
       if (city !== undefined) organizations[index].city = city.trim();
       if (contactPhone !== undefined) organizations[index].contactPhone = contactPhone.trim();
+      if (hostelName !== undefined) organizations[index].hostelName = hostelName.trim();
+      if (messName !== undefined) organizations[index].messName = messName.trim();
       if (logo !== undefined) organizations[index].logo = processedLogo || '';
       organizations[index].updatedAt = new Date().toISOString();
       db.saveCollection('organizations', organizations);

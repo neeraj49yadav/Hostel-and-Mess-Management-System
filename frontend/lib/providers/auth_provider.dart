@@ -365,6 +365,8 @@ class AuthProvider with ChangeNotifier {
     String? logo,
     String? city,
     String? contactPhone,
+    String? hostelName,
+    String? messName,
   }) async {
     _isLoading = true;
     _errorMessage = null;
@@ -376,6 +378,8 @@ class AuthProvider with ChangeNotifier {
         logo: logo,
         city: city,
         contactPhone: contactPhone,
+        hostelName: hostelName,
+        messName: messName,
       );
 
       if (res['data'] != null) {
@@ -387,6 +391,8 @@ class AuthProvider with ChangeNotifier {
           logo: logo,
           city: city,
           contactPhone: contactPhone,
+          hostelName: hostelName,
+          messName: messName,
         );
         await _api.setSelectedOrg(_currentOrganization!.id, _currentOrganization!.code);
       }
@@ -396,6 +402,8 @@ class AuthProvider with ChangeNotifier {
       if (city != null) await prefs.setString('selected_org_city', city);
       if (contactPhone != null) await prefs.setString('selected_org_phone', contactPhone);
       if (logo != null && logo.isNotEmpty) await prefs.setString('selected_org_logo', logo);
+      if (hostelName != null) await prefs.setString('selected_org_hostel_name', hostelName);
+      if (messName != null) await prefs.setString('selected_org_mess_name', messName);
 
       await loadOrganizations();
       _isLoading = false;

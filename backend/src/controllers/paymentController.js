@@ -33,6 +33,7 @@ exports.getPayments = (req, res) => {
 exports.recordPayment = (req, res) => {
   try {
     const orgId = extractOrgId(req);
+    const org = (db.getCollection('organizations') || []).find(o => o.id === orgId) || {};
     const {
       studentId,
       amount,
@@ -187,7 +188,7 @@ exports.recordPayment = (req, res) => {
       totalRentAgreed,
       totalRentPaid: updatedTotalRentPaid,
       rentBalanceDue: remainingRentBalance
-    });
+    }, org);
 
     res.status(201).json({
       success: true,

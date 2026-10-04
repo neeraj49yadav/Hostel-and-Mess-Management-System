@@ -32,6 +32,36 @@ class DashboardProvider with ChangeNotifier {
   List<Student> get active => _active;
   Map<String, dynamic>? get cashbookData => _cashbookData;
 
+  double get totalPendingMessDuesAmount =>
+      (_stats?.allMessDuesAmount ?? 0) > 0
+          ? (_stats!.allMessDuesAmount)
+          : (_messPendingDues.fold(0.0, (sum, s) => sum + s.messBalanceDue) +
+              _messOverdue.fold(0.0, (sum, s) => sum + s.messBalanceDue));
+
+  int get totalPendingMessStudentsCount =>
+      (_stats?.allMessDuesCount ?? 0) > 0
+          ? (_stats!.allMessDuesCount)
+          : (_messPendingDues.length + _messOverdue.length);
+
+  double get currentMessDuesAmount =>
+      (_stats?.currentMessDuesAmount ?? 0) > 0
+          ? (_stats!.currentMessDuesAmount)
+          : _messPendingDues.fold(0.0, (sum, s) => sum + s.messBalanceDue);
+
+  double get overdueMessDuesAmount =>
+      (_stats?.overdueMessDuesAmount ?? 0) > 0
+          ? (_stats!.overdueMessDuesAmount)
+          : _messOverdue.fold(0.0, (sum, s) => sum + s.messBalanceDue);
+
+  int get totalAlertsCount =>
+      _stats != null
+          ? _stats!.totalAlertsCount
+          : (_messPendingDues.length +
+              _messOverdue.length +
+              _messExpiringSoon.length +
+              _rentExpiringSoon.length +
+              _rentOverdue.length);
+
   Future<void> fetchDashboardStats() async {
     _isLoading = true;
     _error = null;

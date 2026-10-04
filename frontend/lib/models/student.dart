@@ -45,6 +45,8 @@ class Student {
   final String statusLabel;
   final String notes;
   final Map<String, dynamic>? whatsappReminder;
+  final Map<String, dynamic>? messWhatsAppReminder;
+  final Map<String, dynamic>? rentWhatsAppReminder;
 
   bool get isHostelResident => memberType == 'HOSTEL_RESIDENT';
   bool get isMessOnly => memberType == 'MESS_ONLY';
@@ -105,6 +107,8 @@ class Student {
     required this.statusLabel,
     required this.notes,
     this.whatsappReminder,
+    this.messWhatsAppReminder,
+    this.rentWhatsAppReminder,
   });
 
   factory Student.fromJson(Map<String, dynamic> json) {
@@ -182,6 +186,12 @@ class Student {
       notes: json['notes'] ?? '',
       whatsappReminder: json['whatsappReminder'] is Map<String, dynamic>
           ? json['whatsappReminder']
+          : null,
+      messWhatsAppReminder: json['messWhatsAppReminder'] is Map<String, dynamic>
+          ? json['messWhatsAppReminder']
+          : null,
+      rentWhatsAppReminder: json['rentWhatsAppReminder'] is Map<String, dynamic>
+          ? json['rentWhatsAppReminder']
           : null,
     );
   }

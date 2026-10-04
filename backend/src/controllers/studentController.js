@@ -8,6 +8,7 @@ const storageService = require('../services/storageService');
 // Enrich student with distinct Mess & Rent statuses and payment balances
 function enrichStudent(student, preloadedPayments) {
   const targetOrgId = student.orgId || 'org-default';
+  const org = (db.getCollection('organizations') || []).find(o => o.id === targetOrgId) || {};
 
   // Calculate total agreed rent and total payments from payments collection
   const payments = preloadedPayments || db.getCollectionForOrg('payments', targetOrgId).filter(p => p.studentId === student.id);
@@ -99,7 +100,25 @@ function enrichStudent(student, preloadedPayments) {
       totalRentAgreed,
       totalRentPaid,
       rentBalanceDue
-    })
+    }, 'BOTH', org),
+    messWhatsAppReminder: generateWhatsAppReminder({
+      ...student,
+      messStartDate: student.messStartDate,
+      messExpiryDate: messLedger.messExpiryDate,
+      messBalanceDue: messLedger.messBalanceDue,
+      totalRentAgreed,
+      totalRentPaid,
+      rentBalanceDue
+    }, 'MESS', org),
+    rentWhatsAppReminder: generateWhatsAppReminder({
+      ...student,
+      messStartDate: student.messStartDate,
+      messExpiryDate: messLedger.messExpiryDate,
+      messBalanceDue: messLedger.messBalanceDue,
+      totalRentAgreed,
+      totalRentPaid,
+      rentBalanceDue
+    }, 'RENT', org)
   };
 }
 

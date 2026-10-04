@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/reminder_helper.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/student.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../widgets/student_avatar.dart';
 import '../finance/record_payment_screen.dart';
@@ -37,9 +39,28 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
   }
 
   void _sendWhatsAppReminder(Student student, String feeType) async {
-    final reminder = student.whatsappReminder;
-    final message = reminder?['message'] ??
-        'Dear ${student.name} (Room ${student.roomNumber}), this is a reminder regarding your pending ${feeType == "MESS" ? "Monthly Mess" : "Hostel Rent"} dues.';
+    final auth = context.read<AuthProvider>();
+    final org = auth.currentOrganization;
+    final hostelName = org?.displayHostelName ?? 'Hostel';
+    final messName = org?.displayMessName ?? 'Mess';
+
+    String? message;
+    if (feeType == 'MESS' && student.messWhatsAppReminder != null) {
+      message = student.messWhatsAppReminder!['message'];
+    } else if (feeType == 'RENT' && student.rentWhatsAppReminder != null) {
+      message = student.rentWhatsAppReminder!['message'];
+    } else if (student.whatsappReminder != null) {
+      message = student.whatsappReminder!['message'];
+    }
+
+    if (message == null || message.isEmpty) {
+      message = ReminderHelper.buildReminderMessage(
+        student: student,
+        feeType: feeType,
+        hostelName: hostelName,
+        messName: messName,
+      );
+    }
     final phone = student.phone.isNotEmpty ? student.phone : student.parentPhone;
 
     final launched = await UrlHelper.launchWhatsApp(phone: phone, message: message);
@@ -274,7 +295,7 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Total Pending Mess Dues',
+                              'Current Cycle Pending Mess Dues (Excl. Overdue)',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -282,11 +303,89 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
                               ),
                             ),
                             Text(
-                              '${AppFormatters.formatCurrency(dash.messPendingDues.fold<double>(0.0, (sum, s) => sum + s.messBalanceDue))} (${dash.messPendingDues.length} Students)',
+                              '${AppFormatters.formatCurrency(dash.currentMessDuesAmount)} (${dash.messPendingDues.length} Students)',
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
                                 color: isDark ? Colors.amber.shade200 : Colors.orange.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (_messSubFilter == 'OVERDUE' && dash.messOverdue.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: isDark ? 0.15 : 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline_rounded, color: isDark ? Colors.redAccent : Colors.red.shade800, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Overdue Mess Dues',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                              ),
+                            ),
+                            Text(
+                              '${AppFormatters.formatCurrency(dash.overdueMessDuesAmount)} (${dash.messOverdue.length} Students)',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.red.shade200 : Colors.red.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (_messSubFilter == 'ALL' && dash.totalPendingMessStudentsCount > 0) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: isDark ? 0.15 : 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long_rounded, color: isDark ? Colors.orangeAccent : Colors.deepOrange, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Total Pending Mess Dues (Current + Overdue)',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                              ),
+                            ),
+                            Text(
+                              '${AppFormatters.formatCurrency(dash.totalPendingMessDuesAmount)} (${dash.totalPendingMessStudentsCount} Students)',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.orange.shade200 : Colors.orange.shade900,
                               ),
                             ),
                           ],

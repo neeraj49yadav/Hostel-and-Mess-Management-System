@@ -6,6 +6,8 @@ class Organization {
   final String contactPhone;
   final String? logo;
   final String? createdAt;
+  final String? hostelName;
+  final String? messName;
 
   Organization({
     required this.id,
@@ -15,7 +17,23 @@ class Organization {
     required this.contactPhone,
     this.logo,
     this.createdAt,
+    this.hostelName,
+    this.messName,
   });
+
+  String get displayHostelName =>
+      (hostelName != null && hostelName!.trim().isNotEmpty) ? hostelName!.trim() : name;
+
+  String get displayMessName {
+    if (messName != null && messName!.trim().isNotEmpty) {
+      return messName!.trim();
+    }
+    if (name.toLowerCase().contains('mess')) {
+      return name;
+    }
+    final cleaned = name.replaceAll(RegExp(r'Hostel|PG|Residency', caseSensitive: false), '').trim();
+    return cleaned.isNotEmpty ? '$cleaned Mess' : '$name Mess';
+  }
 
   factory Organization.fromJson(Map<String, dynamic> json) {
     return Organization(
@@ -26,6 +44,8 @@ class Organization {
       contactPhone: json['contactPhone'] ?? '',
       logo: json['logo'],
       createdAt: json['createdAt'],
+      hostelName: json['hostelName'],
+      messName: json['messName'],
     );
   }
 
@@ -37,6 +57,8 @@ class Organization {
     'contactPhone': contactPhone,
     'logo': logo,
     'createdAt': createdAt,
+    'hostelName': hostelName,
+    'messName': messName,
   };
 
   Organization copyWith({
@@ -47,6 +69,8 @@ class Organization {
     String? contactPhone,
     String? logo,
     String? createdAt,
+    String? hostelName,
+    String? messName,
   }) {
     return Organization(
       id: id ?? this.id,
@@ -56,6 +80,8 @@ class Organization {
       contactPhone: contactPhone ?? this.contactPhone,
       logo: logo ?? this.logo,
       createdAt: createdAt ?? this.createdAt,
+      hostelName: hostelName ?? this.hostelName,
+      messName: messName ?? this.messName,
     );
   }
 

@@ -70,6 +70,12 @@ class DashboardScreen extends StatelessWidget {
 
     final expiringCount = stats?.expiringSoonCount ?? 0;
     final overdueCount = stats?.overdueCount ?? 0;
+    final totalMessDuesAmount = stats?.allMessDuesAmount ?? dash.totalPendingMessDuesAmount;
+    final totalMessDuesCount = stats?.allMessDuesCount ?? dash.totalPendingMessStudentsCount;
+    final currentMessDuesAmount = stats?.currentMessDuesAmount ?? dash.currentMessDuesAmount;
+    final overdueMessDuesAmount = stats?.overdueMessDuesAmount ?? dash.overdueMessDuesAmount;
+    final currentMessCount = stats?.messPendingDuesCount ?? dash.messPendingDues.length;
+    final overdueMessCount = stats?.messOverdueCount ?? dash.messOverdue.length;
     final dashProvider = context.read<DashboardProvider>();
     final hostelProvider = context.read<HostelProvider>();
     final messProvider = context.read<MessProvider>();
@@ -133,7 +139,7 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 16),
 
           // 🚨 High Priority Expiry Alert Banner
-          if (expiringCount > 0 || overdueCount > 0)
+          if (expiringCount > 0 || overdueCount > 0 || totalMessDuesAmount > 0)
             Container(
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.all(14),
@@ -173,7 +179,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '• ${stats?.messExpiringSoonCount ?? 0} Mess plans expiring in 1–5 days (${stats?.messOverdueCount ?? 0} overdue)\n• ${stats?.rentOverdueCount ?? 0} Hostel Rent installments overdue (${stats?.rentExpiringSoonCount ?? 0} upcoming)',
+                    '• Total Mess Dues: ${AppFormatters.formatCurrency(totalMessDuesAmount)} ($totalMessDuesCount Students: $currentMessCount Current, $overdueMessCount Overdue)\n• ${stats?.messExpiringSoonCount ?? 0} Mess plans expiring in 1–5 days\n• ${stats?.rentOverdueCount ?? 0} Hostel Rent installments overdue (${stats?.rentExpiringSoonCount ?? 0} upcoming)',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.4,
@@ -205,6 +211,176 @@ class DashboardScreen extends StatelessWidget {
                 ],
               ),
             ),
+
+          // 🍽️ Total Pending Mess Dues Card (Including Overdue)
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDark
+                    ? [const Color(0xFF2E1505), const Color(0xFF1F0E03)]
+                    : [const Color(0xFFFFF7ED), const Color(0xFFFFEDD5)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isDark ? const Color(0xFFB45309) : const Color(0xFFFDBA74),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withValues(alpha: isDark ? 0.25 : 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const DuesExpiryScreen()),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withValues(alpha: isDark ? 0.3 : 0.2),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.receipt_long_rounded, color: Colors.deepOrange, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Total Pending Mess Dues',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? const Color(0xFFFDBA74) : const Color(0xFF9A3412),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.orange.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.8),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'View Tracker',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.orangeAccent : Colors.deepOrange,
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                Icon(Icons.arrow_forward_ios_rounded, size: 10, color: isDark ? Colors.orangeAccent : Colors.deepOrange),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                AppFormatters.formatCurrency(totalMessDuesAmount),
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? const Color(0xFFFFEDD5) : const Color(0xFF7C2D12),
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Includes Current Month + Overdue Dues',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark ? const Color(0xFFFB923C) : const Color(0xFFC2410C),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF431407) : Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF9A3412) : const Color(0xFFFED7AA),
+                              ),
+                            ),
+                            child: Text(
+                              '$totalMessDuesCount Students',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? const Color(0xFFFDBA74) : const Color(0xFF9A3412),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '• Current Cycle: ${AppFormatters.formatCurrency(currentMessDuesAmount)} ($currentMessCount)',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? const Color(0xFFFDBA74) : const Color(0xFF9A3412),
+                              ),
+                            ),
+                            Text(
+                              '• Overdue: ${AppFormatters.formatCurrency(overdueMessDuesAmount)} ($overdueMessCount)',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.danger,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
 
           // 4-KPI Metric Grid
           Row(

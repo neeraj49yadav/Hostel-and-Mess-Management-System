@@ -26,8 +26,36 @@ class DashboardStats {
   final List<Student> rentExpiringSoon;
   final List<Student> rentOverdue;
 
+  final double totalPendingMessDuesAmount;
+  final double totalCurrentMessDuesAmount;
+  final double totalOverdueMessDuesAmount;
+  final int totalPendingMessDuesCount;
+
   int get expiringSoonCount => messExpiringSoonCount + rentExpiringSoonCount;
   int get overdueCount => totalOverdueCount;
+  int get totalAlertsCount =>
+      messPendingDuesCount +
+      messOverdueCount +
+      messExpiringSoonCount +
+      rentExpiringSoonCount +
+      rentOverdueCount;
+
+  double get allMessDuesAmount => totalPendingMessDuesAmount > 0
+      ? totalPendingMessDuesAmount
+      : (messPendingDues.fold(0.0, (sum, s) => sum + s.messBalanceDue) +
+          messOverdue.fold(0.0, (sum, s) => sum + s.messBalanceDue));
+
+  int get allMessDuesCount => totalPendingMessDuesCount > 0
+      ? totalPendingMessDuesCount
+      : (messPendingDues.length + messOverdue.length);
+
+  double get currentMessDuesAmount => totalCurrentMessDuesAmount > 0
+      ? totalCurrentMessDuesAmount
+      : messPendingDues.fold(0.0, (sum, s) => sum + s.messBalanceDue);
+
+  double get overdueMessDuesAmount => totalOverdueMessDuesAmount > 0
+      ? totalOverdueMessDuesAmount
+      : messOverdue.fold(0.0, (sum, s) => sum + s.messBalanceDue);
 
   DashboardStats({
     required this.totalStudents,
@@ -37,6 +65,10 @@ class DashboardStats {
     required this.rentExpiringSoonCount,
     required this.rentOverdueCount,
     required this.totalOverdueCount,
+    this.totalPendingMessDuesAmount = 0.0,
+    this.totalCurrentMessDuesAmount = 0.0,
+    this.totalOverdueMessDuesAmount = 0.0,
+    this.totalPendingMessDuesCount = 0,
     required this.totalRooms,
     required this.totalBeds,
     required this.occupiedBeds,
@@ -74,6 +106,13 @@ class DashboardStats {
       messPendingDuesCount: (studentsMap['messPendingDuesCount'] as num?)?.toInt() ?? 0,
       messExpiringSoonCount: (studentsMap['messExpiringSoonCount'] as num?)?.toInt() ?? 0,
       messOverdueCount: (studentsMap['messOverdueCount'] as num?)?.toInt() ?? 0,
+      totalPendingMessDuesCount: (studentsMap['totalPendingMessDuesCount'] as num?)?.toInt() ?? 0,
+      totalPendingMessDuesAmount: (finMap['totalPendingMessDuesAmount'] as num?)?.toDouble() ??
+          (studentsMap['totalPendingMessDuesAmount'] as num?)?.toDouble() ?? 0.0,
+      totalCurrentMessDuesAmount: (finMap['totalCurrentMessDuesAmount'] as num?)?.toDouble() ??
+          (studentsMap['totalCurrentMessDuesAmount'] as num?)?.toDouble() ?? 0.0,
+      totalOverdueMessDuesAmount: (finMap['totalOverdueMessDuesAmount'] as num?)?.toDouble() ??
+          (studentsMap['totalOverdueMessDuesAmount'] as num?)?.toDouble() ?? 0.0,
       rentExpiringSoonCount: (studentsMap['rentExpiringSoonCount'] as num?)?.toInt() ?? 0,
       rentOverdueCount: (studentsMap['rentOverdueCount'] as num?)?.toInt() ?? 0,
       totalOverdueCount: (studentsMap['totalOverdueCount'] as num?)?.toInt() ?? 0,
