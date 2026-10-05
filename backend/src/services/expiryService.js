@@ -192,16 +192,20 @@ function calculateMessLedger(student, studentPayments = [], asOfDate = new Date(
       const cycleEnd = new Date(cycleStart);
       cycleEnd.setMonth(cycleEnd.getMonth() + 1);
 
-      // Find plan active for this cycle
-      let cycleFee = currentFee;
-      for (const h of history) {
-        if (h.fee && h.changedAt && cycleStart < new Date(h.changedAt)) {
-          cycleFee = parseFloat(h.fee) || currentFee;
-          break;
+      if (c === cycleInfo.cycleCount - 1) {
+        // Current active cycle: always billed at current plan fee
+        totalMessBilled += currentFee;
+      } else {
+        // Find plan active for this past cycle
+        let cycleFee = currentFee;
+        for (const h of history) {
+          if (h.fee && h.changedAt && cycleStart < new Date(h.changedAt)) {
+            cycleFee = parseFloat(h.fee) || currentFee;
+            break;
+          }
         }
+        totalMessBilled += cycleFee;
       }
-
-      totalMessBilled += cycleFee;
       cycleStart = cycleEnd;
     }
   } else {
@@ -212,7 +216,9 @@ function calculateMessLedger(student, studentPayments = [], asOfDate = new Date(
       for (let c = 0; c < cycleInfo.cycleCount; c++) {
         const cycleEnd = new Date(cycleStart);
         cycleEnd.setMonth(cycleEnd.getMonth() + 1);
-        if (cycleStart < changedDate) {
+        if (c === cycleInfo.cycleCount - 1) {
+          totalMessBilled += currentFee;
+        } else if (cycleStart < changedDate) {
           totalMessBilled += parseFloat(student.previousMessFee) || currentFee;
         } else {
           totalMessBilled += currentFee;
