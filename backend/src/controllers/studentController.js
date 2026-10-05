@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { calculateCycleStatus, calculateMessLedger, generateWhatsAppReminder } = require('../services/expiryService');
+const { calculateCycleStatus, calculateMessExpiryDate, calculateMessLedger, generateWhatsAppReminder } = require('../services/expiryService');
 const { logAudit } = require('../services/auditService');
 const { extractOrgId } = require('../middleware/authMiddleware');
 const storageService = require('../services/storageService');
