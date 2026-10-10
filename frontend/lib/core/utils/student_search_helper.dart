@@ -56,15 +56,77 @@ class StudentSearchHelper {
     });
   }
 
-  /// Filters a list of Students instantly in-memory.
-  static List<Student> filterStudents(List<Student> students, String query) {
-    if (query.trim().isEmpty) return students;
-    return students.where((s) => matchesStudent(s, query)).toList();
+  /// Calculates a relevance score for ordering search results.
+  /// Lower score = higher priority / better match:
+  /// - 0: Name exact match
+  /// - 1: Full name starts with query
+  /// - 2: A word in the name starts with query (e.g. "Kumar" in "Aman Kumar" when searching "Ku")
+  /// - 3: Room starts with or exact matches query
+  /// - 4: Phone starts with query
+  /// - 5: Name contains query as a substring
+  /// - 6: Other fields match (room, bed, notes, parent, etc.)
+  static int _computeScore(dynamic student, String rawQuery) {
+    final query = rawQuery.trim().toLowerCase();
+    if (query.isEmpty) return 100;
+
+    final String name;
+    final String phone;
+    final String room;
+
+    if (student is Student) {
+      name = student.name.trim().toLowerCase();
+      phone = student.phone.trim().toLowerCase();
+      room = student.roomNumber.trim().toLowerCase();
+    } else if (student is Map<String, dynamic> || student is Map) {
+      name = (student['name'] ?? '').toString().trim().toLowerCase();
+      phone = (student['phone'] ?? '').toString().trim().toLowerCase();
+      room = (student['roomNumber'] ?? '').toString().trim().toLowerCase();
+    } else {
+      return 100;
+    }
+
+    if (name == query) return 0;
+    if (name.startsWith(query)) return 1;
+
+    final nameWords = name.split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    if (nameWords.any((w) => w.startsWith(query))) return 2;
+
+    if (room == query || room.startsWith(query)) return 3;
+
+    final phoneDigits = phone.replaceAll(RegExp(r'\D'), '');
+    final queryDigits = query.replaceAll(RegExp(r'\D'), '');
+    if (queryDigits.isNotEmpty && phoneDigits.startsWith(queryDigits)) return 4;
+
+    if (name.contains(query)) return 5;
+
+    return 6;
   }
 
-  /// Filters a list of Master Register map records instantly in-memory.
+  /// Filters a list of Students instantly in-memory, prioritizing prefix/starting alphabet matches.
+  static List<Student> filterStudents(List<Student> students, String query) {
+    if (query.trim().isEmpty) return students;
+    final matched = students.where((s) => matchesStudent(s, query)).toList();
+    matched.sort((a, b) {
+      final scoreA = _computeScore(a, query);
+      final scoreB = _computeScore(b, query);
+      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return matched;
+  }
+
+  /// Filters a list of Master Register map records instantly in-memory, prioritizing prefix/starting alphabet matches.
   static List<dynamic> filterRecords(List<dynamic> records, String query) {
     if (query.trim().isEmpty) return records;
-    return records.where((r) => matchesStudent(r, query)).toList();
+    final matched = records.where((r) => matchesStudent(r, query)).toList();
+    matched.sort((a, b) {
+      final scoreA = _computeScore(a, query);
+      final scoreB = _computeScore(b, query);
+      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+      final nameA = (a['name'] ?? '').toString().toLowerCase();
+      final nameB = (b['name'] ?? '').toString().toLowerCase();
+      return nameA.compareTo(nameB);
+    });
+    return matched;
   }
 }

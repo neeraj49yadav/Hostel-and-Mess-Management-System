@@ -162,6 +162,25 @@ exports.getStudents = (req, res) => {
           return combined.includes(token);
         });
       });
+
+      enriched.sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase().trim();
+        const nameB = (b.name || '').toLowerCase().trim();
+        const score = (name, s) => {
+          if (name === q) return 0;
+          if (name.startsWith(q)) return 1;
+          const words = name.split(/\s+/).filter(Boolean);
+          if (words.some(w => w.startsWith(q))) return 2;
+          const room = String(s.roomNumber || '').toLowerCase().trim();
+          if (room === q || room.startsWith(q)) return 3;
+          if (name.includes(q)) return 4;
+          return 5;
+        };
+        const scoreA = score(nameA, a);
+        const scoreB = score(nameB, b);
+        if (scoreA !== scoreB) return scoreA - scoreB;
+        return nameA.localeCompare(nameB);
+      });
     }
 
     if (status) {

@@ -502,6 +502,26 @@ class Database {
     }
 
     filtered.sort((a, b) => {
+      if (filters.search && filters.search.trim()) {
+        const q = filters.search.trim().toLowerCase();
+        const nameA = (a.name || '').toLowerCase().trim();
+        const nameB = (b.name || '').toLowerCase().trim();
+        const score = (name, item) => {
+          if (name === q) return 0;
+          if (name.startsWith(q)) return 1;
+          const words = name.split(/\s+/).filter(Boolean);
+          if (words.some(w => w.startsWith(q))) return 2;
+          const room = String(item.roomNumber || '').toLowerCase().trim();
+          if (room === q || room.startsWith(q)) return 3;
+          if (name.includes(q)) return 4;
+          return 5;
+        };
+        const scoreA = score(nameA, a);
+        const scoreB = score(nameB, b);
+        if (scoreA !== scoreB) return scoreA - scoreB;
+        return nameA.localeCompare(nameB);
+      }
+
       const dateA = new Date(a.admissionDate || a.createdAt || 0);
       const dateB = new Date(b.admissionDate || b.createdAt || 0);
       return dateB - dateA;
