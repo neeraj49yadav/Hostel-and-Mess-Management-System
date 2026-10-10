@@ -1,0 +1,41 @@
+name: Build iOS App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_ios:
+    name: Build iOS (No Codesign / Simulator & Payload)
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Dependencies
+        run: |
+          cd frontend
+          flutter pub get
+
+      - name: Build iOS App (No Codesign)
+        run: |
+          cd frontend
+          flutter build ios --release --no-codesign
+
+      - name: Package App into Payload / IPA
+        run: |
+          cd frontend/build/ios/iphoneos
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -r HostelApp.ipa Payload
+        
+      - name: Upload IPA / App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-Release-App
+          path: frontend/build/ios/iphoneos/HostelApp.ipa
