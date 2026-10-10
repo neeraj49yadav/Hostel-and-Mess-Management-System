@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/student.dart';
 import '../models/room.dart';
@@ -30,17 +31,22 @@ class HostelProvider with ChangeNotifier {
   String get statusFilter => _statusFilter;
   String get roomFilter => _roomFilter;
 
-  Future<void> fetchStudents() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  Timer? _searchDebounce;
+
+  Future<void> fetchStudents({bool isSearch = false}) async {
+    if (!isSearch) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    }
 
     try {
-      _students = await _api.getStudents(
+      final fetched = await _api.getStudents(
         search: _searchQuery,
         status: _statusFilter,
         roomId: _roomFilter,
       );
+      _students = fetched;
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -52,7 +58,11 @@ class HostelProvider with ChangeNotifier {
 
   void setSearchQuery(String query) {
     _searchQuery = query;
-    fetchStudents();
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      fetchStudents(isSearch: true);
+    });
+    notifyListeners();
   }
 
   void setStatusFilter(String status) {

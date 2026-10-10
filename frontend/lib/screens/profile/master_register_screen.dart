@@ -1,13 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/student_search_helper.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/hostel_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/pdf_service.dart';
 import '../../widgets/app_avatar_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MasterRegisterScreen extends StatefulWidget {
   const MasterRegisterScreen({super.key});
@@ -35,6 +39,8 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
   String _statusFilter = 'ALL'; // ALL, ACTIVE, LEFT
   String _typeFilter = 'ALL'; // ALL, HOSTEL_RESIDENT, MESS_ONLY
 
+  Timer? _searchDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -43,15 +49,18 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchMasterRegister() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Future<void> _fetchMasterRegister({bool isSearch = false}) async {
+    if (!isSearch) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final res = await _api.getMasterRegister(
@@ -118,6 +127,134 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to generate PDF: $e'), backgroundColor: AppColors.danger),
         );
+      }
+    }
+  }
+
+  Future<void> _confirmMarkPassedOut(Map<String, dynamic> r) async {
+    final name = r['name']?.toString() ?? 'Student';
+    final id = r['id']?.toString() ?? '';
+    final reasonController = TextEditingController(text: 'Passed Out / Alumni');
+
+    final prefs = await SharedPreferences.getInstance();
+    final bool hasSeenPurgeWarning = prefs.getBool('has_seen_photo_purge_warning') ?? false;
+
+    if (!mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.school_rounded, color: Colors.orange.shade800),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Mark as Passed Out',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to mark "$name" as Passed Out / Left?',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            if (!hasSeenPurgeWarning) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, size: 18, color: Colors.amber.shade900),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Student's photo will be permanently purged from storage.",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Exit Reason',
+                hintText: 'e.g. Course completed / Shifted home',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange.shade800,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm & Archive'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Processing status update for $name...')),
+        );
+        final adminName = context.read<AuthProvider>().currentAdmin?.name;
+        await _api.updateMasterRegisterStatus(
+          id,
+          status: 'LEFT',
+          exitReason: reasonController.text.trim().isEmpty ? 'Passed Out / Alumni' : reasonController.text.trim(),
+          adminName: adminName,
+        );
+
+        // Mark warning as seen so it is never shown again
+        await prefs.setBool('has_seen_photo_purge_warning', true);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('🎓 $name marked as LEFT.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _fetchMasterRegister();
+          try {
+            context.read<HostelProvider>().fetchStudents();
+            context.read<HostelProvider>().fetchRooms();
+          } catch (_) {}
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update status: $e'),
+              backgroundColor: AppColors.danger,
+            ),
+          );
+        }
       }
     }
   }
@@ -341,6 +478,8 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
                       icon: const Icon(Icons.clear, size: 18),
                       onPressed: () {
                         _searchCtrl.clear();
+                        _searchDebounce?.cancel();
+                        setState(() {});
                         _fetchMasterRegister();
                       },
                     )
@@ -359,7 +498,10 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
             ),
             onChanged: (val) {
               setState(() {});
-              _fetchMasterRegister();
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                _fetchMasterRegister(isSearch: true);
+              });
             },
           ),
           const SizedBox(height: 8),
@@ -444,14 +586,18 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
   }
 
   Widget _buildRecordsList(bool isDark) {
+    final filtered = StudentSearchHelper.filterRecords(_records, _searchCtrl.text);
+    if (filtered.isEmpty) {
+      return _buildEmptyView();
+    }
     return RefreshIndicator(
       onRefresh: _fetchMasterRegister,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-        itemCount: _records.length,
+        itemCount: filtered.length,
         separatorBuilder: (context, index) => const SizedBox(height: 10),
         itemBuilder: (ctx, idx) {
-          final r = _records[idx] as Map<String, dynamic>;
+          final r = filtered[idx] as Map<String, dynamic>;
           return _buildStudentRecordCard(r, isDark);
         },
       ),
@@ -688,6 +834,13 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
                   tooltip: 'WhatsApp Student',
                   onPressed: () => _openWhatsApp(phone, name),
                 ),
+                if (!isLeft)
+                  IconButton(
+                    icon: Icon(Icons.school_rounded, size: 18, color: Colors.orange.shade800),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Mark as Passed Out / Left',
+                    onPressed: () => _confirmMarkPassedOut(r),
+                  ),
                 IconButton(
                   icon: const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.textSecondary),
                   visualDensity: VisualDensity.compact,
@@ -780,9 +933,27 @@ class _MasterRegisterScreenState extends State<MasterRegisterScreen> {
               if ((r['notes']?.toString() ?? '').isNotEmpty)
                 _buildDetailItem('Notes / History', r['notes'].toString()),
               const SizedBox(height: 16),
+              if (!isLeft) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade800,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.school_rounded),
+                    label: const Text('Mark as Passed Out / Left'),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _confirmMarkPassedOut(r);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
+                child: OutlinedButton.icon(
                   icon: const Icon(Icons.close),
                   label: const Text('Close'),
                   onPressed: () => Navigator.pop(ctx),

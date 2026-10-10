@@ -9,7 +9,6 @@ import '../../models/payment.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/hostel_provider.dart';
 import '../../services/api_service.dart';
-import '../../services/pdf_service.dart';
 import '../../widgets/student_avatar.dart';
 import '../../widgets/remove_student_dialog.dart';
 import 'add_edit_student_screen.dart';
@@ -773,17 +772,6 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15,
                                       color: isDark ? AppColors.primaryLight : AppColors.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  IconButton(
-                                    icon: Icon(Icons.picture_as_pdf_rounded, color: primColor, size: 20),
-                                    tooltip: 'View & Share Receipt PDF',
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onPressed: () => PdfService.printReceipt(
-                                      p,
-                                      hostelName: context.read<AuthProvider>().currentOrganization?.name,
                                     ),
                                   ),
                                   const SizedBox(width: 8),

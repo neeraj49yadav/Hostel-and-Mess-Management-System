@@ -475,14 +475,30 @@ class Database {
 
     if (filters.search && filters.search.trim()) {
       const q = filters.search.trim().toLowerCase();
-      filtered = filtered.filter(r =>
-        (r.name && r.name.toLowerCase().includes(q)) ||
-        (r.phone && r.phone.includes(q)) ||
-        (r.parentPhone && r.parentPhone.includes(q)) ||
-        (r.parentName && r.parentName.toLowerCase().includes(q)) ||
-        (r.roomNumber && r.roomNumber.toLowerCase().includes(q)) ||
-        (r.notes && r.notes.toLowerCase().includes(q))
-      );
+      const tokens = q.split(/\s+/).filter(Boolean);
+
+      filtered = filtered.filter(r => {
+        const name = (r.name || '').toLowerCase();
+        const phone = (r.phone || '').toLowerCase();
+        const phoneDigits = phone.replace(/\D/g, '');
+        const parentName = (r.parentName || '').toLowerCase();
+        const parentPhone = (r.parentPhone || '').toLowerCase();
+        const parentPhoneDigits = parentPhone.replace(/\D/g, '');
+        const room = String(r.roomNumber || '').toLowerCase();
+        const bed = String(r.bedNo || '').toLowerCase();
+        const roomBed = `room ${room} bed ${bed} ${room} ${bed}`;
+        const notes = `${r.notes || ''} ${r.exitReason || ''}`.toLowerCase();
+
+        const combined = `${name} ${phone} ${parentName} ${parentPhone} ${roomBed} ${notes}`;
+
+        return tokens.every(token => {
+          const tokenDigits = token.replace(/\D/g, '');
+          if (tokenDigits.length >= 3 && (phoneDigits.includes(tokenDigits) || parentPhoneDigits.includes(tokenDigits))) {
+            return true;
+          }
+          return combined.includes(token);
+        });
+      });
     }
 
     filtered.sort((a, b) => {

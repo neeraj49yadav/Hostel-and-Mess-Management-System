@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/reminder_helper.dart';
+import '../../core/utils/student_search_helper.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/student.dart';
 import '../../providers/auth_provider.dart';
@@ -21,6 +22,8 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
   late TabController _tabController;
   String _messSubFilter = 'PENDING_DUES'; // 'PENDING_DUES', 'OVERDUE', 'UPCOMING', 'ALL'
   final TextEditingController _messSearchCtrl = TextEditingController();
+  final TextEditingController _rentSearchCtrl = TextEditingController();
+  final TextEditingController _allSearchCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -35,6 +38,8 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
   void dispose() {
     _tabController.dispose();
     _messSearchCtrl.dispose();
+    _rentSearchCtrl.dispose();
+    _allSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -140,6 +145,8 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
               type: 'RENT',
               emptyMessage: 'All hostel rent installments are up to date!',
               isDark: isDark,
+              searchCtrl: _rentSearchCtrl,
+              searchHint: 'Search rent dues by name, room, phone...',
             ),
 
             // Tab 3: All Active
@@ -148,6 +155,8 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
               type: 'ALL',
               emptyMessage: 'No students found.',
               isDark: isDark,
+              searchCtrl: _allSearchCtrl,
+              searchHint: 'Search active students by name, room, phone...',
             ),
           ],
         ),
@@ -174,15 +183,7 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
       }
     }
 
-    final q = _messSearchCtrl.text.trim().toLowerCase();
-    final filtered = q.isEmpty
-        ? baseList
-        : baseList.where((s) {
-            return s.name.toLowerCase().contains(q) ||
-                s.phone.contains(q) ||
-                s.roomNumber.toLowerCase().contains(q) ||
-                s.mealPlanType.toLowerCase().contains(q);
-          }).toList();
+    final filtered = StudentSearchHelper.filterStudents(baseList, _messSearchCtrl.text);
 
     final allUniqueCount = {
       ...dash.messPendingDues.map((s) => s.id),
@@ -422,36 +423,50 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
     required String type,
     required String emptyMessage,
     required bool isDark,
+    TextEditingController? searchCtrl,
+    String? searchHint,
   }) {
-    if (items.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.check_circle_outline, size: 64, color: AppColors.success.withValues(alpha: 0.6)),
-              const SizedBox(height: 16),
-              Text(
-                emptyMessage,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    final filtered = searchCtrl != null
+        ? StudentSearchHelper.filterStudents(items, searchCtrl.text)
+        : items;
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      separatorBuilder: (c, i) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final student = items[index];
+    final content = filtered.isEmpty
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    (searchCtrl != null && searchCtrl.text.isNotEmpty)
+                        ? Icons.search_off_rounded
+                        : Icons.check_circle_outline,
+                    size: 64,
+                    color: (searchCtrl != null && searchCtrl.text.isNotEmpty)
+                        ? (isDark ? AppColors.textMutedDark : AppColors.textMutedLight)
+                        : AppColors.success.withValues(alpha: 0.6),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    (searchCtrl != null && searchCtrl.text.isNotEmpty)
+                        ? 'No students found matching "${searchCtrl.text}"'
+                        : emptyMessage,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: filtered.length,
+            separatorBuilder: (c, i) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final student = filtered[index];
         final isMessType = type == 'MESS';
         final isRentType = type == 'RENT';
 
@@ -625,6 +640,42 @@ class _DuesExpiryScreenState extends State<DuesExpiryScreen> with SingleTickerPr
           ),
         );
       },
+    );
+
+    if (searchCtrl == null) {
+      return content;
+    }
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: isDark ? AppColors.surfaceDark : Colors.white,
+          child: TextField(
+            controller: searchCtrl,
+            decoration: InputDecoration(
+              hintText: searchHint ?? 'Search by name, room, phone...',
+              prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
+              suffixIcon: searchCtrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        setState(() {
+                          searchCtrl.clear();
+                        });
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(child: content),
+      ],
     );
   }
 

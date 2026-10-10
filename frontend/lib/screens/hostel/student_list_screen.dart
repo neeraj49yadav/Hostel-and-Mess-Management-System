@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/reminder_helper.dart';
+import '../../core/utils/student_search_helper.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/student.dart';
 import '../../providers/auth_provider.dart';
@@ -40,7 +41,8 @@ class _StudentListScreenState extends State<StudentListScreen> {
   Widget build(BuildContext context) {
     final hostel = context.watch<HostelProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final residents = hostel.students.where((s) => s.isHostelResident).toList();
+    final allResidents = hostel.students.where((s) => s.isHostelResident).toList();
+    final residents = StudentSearchHelper.filterStudents(allResidents, _searchController.text);
 
     return Scaffold(
       appBar: AppBar(
@@ -78,13 +80,14 @@ class _StudentListScreenState extends State<StudentListScreen> {
                 TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Search by name, room, phone...',
+                    hintText: 'Search by name, room, phone, parent...',
                     prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear),
                             onPressed: () {
                               _searchController.clear();
+                              setState(() {});
                               hostel.setSearchQuery('');
                             },
                           )
@@ -93,7 +96,10 @@ class _StudentListScreenState extends State<StudentListScreen> {
                     fillColor: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
                   ),
-                  onChanged: (val) => hostel.setSearchQuery(val),
+                  onChanged: (val) {
+                    setState(() {});
+                    hostel.setSearchQuery(val);
+                  },
                 ),
                 const SizedBox(height: 10),
 

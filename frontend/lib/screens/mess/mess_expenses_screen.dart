@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/student_search_helper.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/mess_expense.dart';
 import '../../models/student.dart';
@@ -213,6 +214,8 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
 
   // --- TAB 1: MEMBERS VIEW ---
   Widget _buildMembersTab(MessProvider mess, bool isDark) {
+    final filteredMembers = StudentSearchHelper.filterStudents(mess.messMembers, _searchCtrl.text);
+
     return Column(
       children: [
         Container(
@@ -223,13 +226,14 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
               TextField(
                 controller: _searchCtrl,
                 decoration: InputDecoration(
-                  hintText: 'Search mess subscribers by name, phone...',
+                  hintText: 'Search mess subscribers by name, room, phone...',
                   prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
                   suffixIcon: _searchCtrl.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchCtrl.clear();
+                            setState(() {});
                             mess.setMemberSearchQuery('');
                           },
                         )
@@ -238,7 +242,10 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                   fillColor: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
                   contentPadding: const EdgeInsets.symmetric(vertical: 0),
                 ),
-                onChanged: (val) => mess.setMemberSearchQuery(val),
+                onChanged: (val) {
+                  setState(() {});
+                  mess.setMemberSearchQuery(val);
+                },
               ),
               const SizedBox(height: 10),
 
@@ -264,7 +271,7 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
         Expanded(
           child: RefreshIndicator(
             onRefresh: () => mess.fetchMessMembers(),
-            child: mess.messMembers.isEmpty
+            child: filteredMembers.isEmpty
                 ? Center(
                     child: Text(
                       'No mess members found',
@@ -273,10 +280,10 @@ class _MessExpensesScreenState extends State<MessExpensesScreen> with SingleTick
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.all(16),
-                    itemCount: mess.messMembers.length,
+                    itemCount: filteredMembers.length,
                     separatorBuilder: (c, i) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      final member = mess.messMembers[index];
+                      final member = filteredMembers[index];
                       final isOutside = member.isMessOnly;
                       final badge = AppFormatters.getStatusBadge(member.messDynamicStatus, isDark: isDark);
 

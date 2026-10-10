@@ -110,12 +110,31 @@ exports.getMessMembers = (req, res) => {
     // Search filter
     if (search && search.trim()) {
       const q = search.trim().toLowerCase();
-      result = result.filter(s =>
-        (s.name && s.name.toLowerCase().includes(q)) ||
-        (s.phone && s.phone.includes(q)) ||
-        (s.roomNumber && s.roomNumber.toLowerCase().includes(q)) ||
-        (s.mealPlanType && s.mealPlanType.toLowerCase().includes(q))
-      );
+      const tokens = q.split(/\s+/).filter(Boolean);
+
+      result = result.filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const phone = (s.phone || '').toLowerCase();
+        const phoneDigits = phone.replace(/\D/g, '');
+        const parentName = (s.parentName || '').toLowerCase();
+        const parentPhone = (s.parentPhone || '').toLowerCase();
+        const parentPhoneDigits = parentPhone.replace(/\D/g, '');
+        const room = String(s.roomNumber || '').toLowerCase();
+        const bed = String(s.bedNo || '').toLowerCase();
+        const roomBed = `room ${room} bed ${bed} ${room} ${bed}`;
+        const mealPlan = (s.mealPlanType || '').toLowerCase();
+        const notes = (s.notes || '').toLowerCase();
+
+        const combined = `${name} ${phone} ${parentName} ${parentPhone} ${roomBed} ${mealPlan} ${notes}`;
+
+        return tokens.every(token => {
+          const tokenDigits = token.replace(/\D/g, '');
+          if (tokenDigits.length >= 3 && (phoneDigits.includes(tokenDigits) || parentPhoneDigits.includes(tokenDigits))) {
+            return true;
+          }
+          return combined.includes(token);
+        });
+      });
     }
 
     res.json({
@@ -292,7 +311,7 @@ exports.createMessMember = async (req, res) => {
 };
 
 // Unenroll / Remove student from Mess (Handles Outside Day Scholars and Hostel Residents)
-exports.unenrollMessMember = (req, res) => {
+exports.unenrollMessMember = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { id } = req.params;
@@ -309,11 +328,18 @@ exports.unenrollMessMember = (req, res) => {
 
     // CASE 1: Outside Day Scholar (MESS_ONLY)
     if (student.memberType === 'MESS_ONLY') {
+      // 🗑️ Delete photo from cloud storage to prevent orphaned files
+      if (student.photoUrl) {
+        await storageService.deleteFile(student.photoUrl);
+        student.photoUrl = '';
+      }
+
       // 📜 Mark as LEFT in Master Register before deleting from active list (Never lost!)
       db.upsertMasterRegister(student, orgId, {
         status: 'LEFT',
         leftDate: new Date().toISOString(),
-        exitReason: reason || 'Subscription cancelled'
+        exitReason: reason || 'Subscription cancelled',
+        photoUrl: ''
       });
 
       students = students.filter(s => s.id !== id);
@@ -322,7 +348,7 @@ exports.unenrollMessMember = (req, res) => {
       logAudit({
         req,
         action: 'REMOVE_MESS_MEMBER',
-        details: `Removed outside mess member ${student.name} (Phone: ${student.phone}). Reason: ${reason || 'Subscription cancelled'}`,
+        details: `Removed outside mess member ${student.name} (Phone: ${student.phone}). Reason: ${reason || 'Subscription cancelled'}. Cleaned up photo from storage.`,
         adminName
       });
 
@@ -336,6 +362,12 @@ exports.unenrollMessMember = (req, res) => {
     // CASE 2: Hostel Resident (HOSTEL_RESIDENT)
     // If removeFromHostel is true as well: Checkout resident from hostel too!
     if (removeFromHostel === true) {
+      // 🗑️ Delete photo from cloud storage to prevent orphaned files
+      if (student.photoUrl) {
+        await storageService.deleteFile(student.photoUrl);
+        student.photoUrl = '';
+      }
+
       student.status = 'ARCHIVED';
       student.checkoutDate = new Date().toISOString();
       student.checkoutReason = reason || 'Left Hostel & Mess';
@@ -347,7 +379,8 @@ exports.unenrollMessMember = (req, res) => {
       db.upsertMasterRegister(student, orgId, {
         status: 'LEFT',
         leftDate: student.checkoutDate,
-        exitReason: student.checkoutReason
+        exitReason: student.checkoutReason,
+        photoUrl: ''
       });
 
       // Refresh room counts
@@ -362,7 +395,7 @@ exports.unenrollMessMember = (req, res) => {
       logAudit({
         req,
         action: 'REMOVE_FROM_HOSTEL_AND_MESS',
-        details: `Checked out resident ${student.name} from Room ${student.roomNumber} (Bed ${student.bedNo}) and cancelled mess subscription. Reason: ${student.checkoutReason}`,
+        details: `Checked out resident ${student.name} from Room ${student.roomNumber} (Bed ${student.bedNo}) and cancelled mess subscription. Reason: ${student.checkoutReason}. Cleaned up photo from storage.`,
         adminName
       });
 

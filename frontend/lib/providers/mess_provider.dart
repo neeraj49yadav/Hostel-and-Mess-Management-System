@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/mess_expense.dart';
 import '../models/vendor.dart';
@@ -44,11 +45,15 @@ class MessProvider with ChangeNotifier {
   String? get error => _error;
   String get selectedCategory => _selectedCategory;
 
+  Timer? _memberSearchDebounce;
+
   // --- Mess Members Operations ---
-  Future<void> fetchMessMembers() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  Future<void> fetchMessMembers({bool isSearch = false}) async {
+    if (!isSearch) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    }
 
     try {
       final res = await _api.getMessMembers(
@@ -89,7 +94,11 @@ class MessProvider with ChangeNotifier {
 
   void setMemberSearchQuery(String query) {
     _memberSearchQuery = query;
-    fetchMessMembers();
+    _memberSearchDebounce?.cancel();
+    _memberSearchDebounce = Timer(const Duration(milliseconds: 300), () {
+      fetchMessMembers(isSearch: true);
+    });
+    notifyListeners();
   }
 
   Future<bool> createOutsideMessMember(Map<String, dynamic> data) async {

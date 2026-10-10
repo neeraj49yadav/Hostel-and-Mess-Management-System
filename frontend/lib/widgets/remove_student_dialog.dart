@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../providers/hostel_provider.dart';
 import '../providers/mess_provider.dart';
 import '../providers/dashboard_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'student_avatar.dart';
 
 enum RemovalActionType {
@@ -37,6 +38,11 @@ Future<void> showRemoveStudentDialog(
 
   final reasonController = TextEditingController();
   bool isSubmitting = false;
+
+  final prefs = await SharedPreferences.getInstance();
+  final bool hasSeenPurgeWarning = prefs.getBool('has_seen_photo_purge_warning') ?? false;
+
+  if (!context.mounted) return;
 
   await showModalBottomSheet(
     context: context,
@@ -100,6 +106,9 @@ Future<void> showRemoveStudentDialog(
               }
 
               if (success) {
+                if (!hasSeenPurgeWarning) {
+                  await prefs.setBool('has_seen_photo_purge_warning', true);
+                }
                 await hostel.fetchStudents();
                 await mess.fetchMessMembers();
                 dash.fetchDashboardStats();
@@ -291,6 +300,35 @@ Future<void> showRemoveStudentDialog(
                       fillColor: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
                     ),
                   ),
+
+                  // First-time warning: only warns that student's photo will be permanently purged from storage
+                  if (!hasSeenPurgeWarning && (student.isMessOnly || selectedAction != RemovalActionType.messOnly)) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, size: 18, color: Colors.amber.shade900),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "Student's photo will be permanently purged from storage.",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
 
                   const SizedBox(height: 20),
 

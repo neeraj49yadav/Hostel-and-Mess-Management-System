@@ -160,9 +160,68 @@ async function processImage(imageInput, subfolder = 'students', customName = nul
   return trimmed;
 }
 
+/**
+ * Deletes a file from Supabase Storage or local disk fallback
+ */
+async function deleteFile(fileUrl) {
+  if (!fileUrl || typeof fileUrl !== 'string') return false;
+  const trimmed = fileUrl.trim();
+  if (!trimmed) return false;
+
+  const supabase = db.getSupabaseClient();
+
+  // 1. Check if Supabase Storage URL
+  if (supabase && (trimmed.includes(`/${BUCKET_NAME}/`) || trimmed.includes(BUCKET_NAME))) {
+    try {
+      let relativePath = '';
+      if (trimmed.includes(`/${BUCKET_NAME}/`)) {
+        relativePath = trimmed.split(`/${BUCKET_NAME}/`)[1].split('?')[0];
+      } else {
+        const parts = trimmed.split('/');
+        const bIndex = parts.indexOf(BUCKET_NAME);
+        if (bIndex !== -1) {
+          relativePath = parts.slice(bIndex + 1).join('/').split('?')[0];
+        }
+      }
+
+      if (relativePath) {
+        const decodedPath = decodeURIComponent(relativePath);
+        const { data, error } = await supabase.storage.from(BUCKET_NAME).remove([decodedPath]);
+        if (!error) {
+          console.log(`🗑️ [Supabase Storage] Deleted: ${decodedPath}`);
+          return true;
+        } else {
+          console.warn('[Supabase Storage Delete Warning]:', error.message);
+        }
+      }
+    } catch (sbErr) {
+      console.warn('[Supabase Storage Delete Exception]:', sbErr.message);
+    }
+  }
+
+  // 2. Check if Local Disk Fallback path
+  if (trimmed.includes('/uploads/')) {
+    try {
+      const relPath = trimmed.split('/uploads/')[1].split('?')[0];
+      const targetPath = path.join(LOCAL_UPLOADS_DIR, relPath);
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+        console.log(`🗑️ [Local Storage] Deleted file: ${targetPath}`);
+        return true;
+      }
+    } catch (fsErr) {
+      console.warn('[Local Storage Delete Exception]:', fsErr.message);
+    }
+  }
+
+  return false;
+}
+
 module.exports = {
   processImage,
   uploadBuffer,
+  deleteFile,
+  deleteImage: deleteFile,
   isBase64Image,
   parseBase64,
   BUCKET_NAME

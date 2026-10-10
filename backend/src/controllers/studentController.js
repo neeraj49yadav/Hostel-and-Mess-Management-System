@@ -135,14 +135,33 @@ exports.getStudents = (req, res) => {
       return enrichStudent(s, studentPayments);
     });
 
-    if (search) {
-      const q = search.toLowerCase();
-      enriched = enriched.filter(s =>
-        s.name.toLowerCase().includes(q) ||
-        s.phone.includes(q) ||
-        (s.roomNumber && s.roomNumber.toLowerCase().includes(q)) ||
-        (s.parentName && s.parentName.toLowerCase().includes(q))
-      );
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      const tokens = q.split(/\s+/).filter(Boolean);
+
+      enriched = enriched.filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const phone = (s.phone || '').toLowerCase();
+        const phoneDigits = phone.replace(/\D/g, '');
+        const parentName = (s.parentName || '').toLowerCase();
+        const parentPhone = (s.parentPhone || '').toLowerCase();
+        const parentPhoneDigits = parentPhone.replace(/\D/g, '');
+        const room = String(s.roomNumber || '').toLowerCase();
+        const bed = String(s.bedNo || '').toLowerCase();
+        const roomBed = `room ${room} bed ${bed} ${room} ${bed}`;
+        const mealPlan = (s.mealPlanType || '').toLowerCase();
+        const notes = (s.notes || '').toLowerCase();
+
+        const combined = `${name} ${phone} ${parentName} ${parentPhone} ${roomBed} ${mealPlan} ${notes}`;
+
+        return tokens.every(token => {
+          const tokenDigits = token.replace(/\D/g, '');
+          if (tokenDigits.length >= 3 && (phoneDigits.includes(tokenDigits) || parentPhoneDigits.includes(tokenDigits))) {
+            return true;
+          }
+          return combined.includes(token);
+        });
+      });
     }
 
     if (status) {
@@ -396,6 +415,9 @@ exports.updateStudent = async (req, res) => {
     // ☁️ Offload updated photo to Supabase Storage if Base64
     let storedPhotoUrl = students[index].photoUrl || '';
     if (photoUrl !== undefined) {
+      if (students[index].photoUrl && students[index].photoUrl !== photoUrl && (photoUrl === '' || photoUrl.startsWith('data:'))) {
+        await storageService.deleteFile(students[index].photoUrl);
+      }
       storedPhotoUrl = await storageService.processImage(photoUrl, 'students');
     }
 
@@ -522,7 +544,7 @@ exports.shiftBed = (req, res) => {
 };
 
 // Checkout Student
-exports.checkoutStudent = (req, res) => {
+exports.checkoutStudent = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { id } = req.params;
@@ -531,6 +553,12 @@ exports.checkoutStudent = (req, res) => {
     const students = db.getCollectionForOrg('students', orgId);
     const student = students.find(s => s.id === id);
     if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
+
+    // 🗑️ Delete photo from cloud storage to prevent orphaned files
+    if (student.photoUrl) {
+      await storageService.deleteFile(student.photoUrl);
+      student.photoUrl = '';
+    }
 
     student.status = 'ARCHIVED';
     student.checkoutDate = new Date().toISOString();
@@ -547,7 +575,8 @@ exports.checkoutStudent = (req, res) => {
     db.upsertMasterRegister(student, orgId, {
       status: 'LEFT',
       leftDate: student.checkoutDate,
-      exitReason: student.checkoutReason
+      exitReason: student.checkoutReason,
+      photoUrl: ''
     });
 
     const rooms = db.getCollectionForOrg('rooms', orgId);
@@ -561,7 +590,7 @@ exports.checkoutStudent = (req, res) => {
     logAudit({
       req,
       action: removeFromMess ? 'CHECKOUT_HOSTEL_AND_MESS' : 'CHECKOUT_STUDENT',
-      details: `Checked out resident ${student.name} from Room ${student.roomNumber} (Bed ${student.bedNo})${removeFromMess ? ' and unenrolled from Mess' : ''}. Reason: ${student.checkoutReason}. Bed is now vacant.`,
+      details: `Checked out resident ${student.name} from Room ${student.roomNumber} (Bed ${student.bedNo})${removeFromMess ? ' and unenrolled from Mess' : ''}. Reason: ${student.checkoutReason}. Bed is now vacant. Cleaned up student photo from storage.`,
       adminName: adminName || (req.admin && req.admin.name) || 'Admin'
     });
 
@@ -572,7 +601,7 @@ exports.checkoutStudent = (req, res) => {
 };
 
 // Delete Student Record Permanently from active list (Retained permanently in Master Register)
-exports.deleteStudent = (req, res) => {
+exports.deleteStudent = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { id } = req.params;
@@ -582,11 +611,18 @@ exports.deleteStudent = (req, res) => {
     const student = students.find(s => s.id === id);
     if (!student) return res.status(404).json({ success: false, message: 'Student record not found' });
 
+    // 🗑️ Delete photo from cloud storage to prevent orphaned files
+    if (student.photoUrl) {
+      await storageService.deleteFile(student.photoUrl);
+      student.photoUrl = '';
+    }
+
     // 📜 Preserve in non-deletable Master Register before removing from active table
     db.upsertMasterRegister(student, orgId, {
       status: 'LEFT',
       leftDate: student.checkoutDate || new Date().toISOString(),
-      exitReason: student.checkoutReason || 'Deleted from active resident list'
+      exitReason: student.checkoutReason || 'Deleted from active resident list',
+      photoUrl: ''
     });
 
     students = students.filter(s => s.id !== id);

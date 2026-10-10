@@ -339,6 +339,24 @@ class ApiService {
     return res;
   }
 
+  // 🎓 Mark Student as Passed Out / Left in Master Register (Auto-deletes photo from storage)
+  Future<Map<String, dynamic>> updateMasterRegisterStatus(
+    String id, {
+    String status = 'LEFT',
+    String exitReason = 'Passed Out / Alumni',
+    String? leftDate,
+    String? adminName,
+  }) async {
+    final payload = <String, dynamic>{
+      'status': status,
+      'exitReason': exitReason,
+    };
+    if (leftDate != null) payload['leftDate'] = leftDate;
+    if (adminName != null) payload['adminName'] = adminName;
+    final res = await _put('${ApiConstants.masterRegister}/$id/status', payload);
+    return res;
+  }
+
   Future<Map<String, dynamic>> addUser(Map<String, dynamic> data) async {
     final res = await _post(ApiConstants.addUser, data);
     return res;

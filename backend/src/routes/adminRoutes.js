@@ -20,6 +20,8 @@ router.put('/organization', verifyToken, adminController.updateOrganization);
 router.get('/notifications', verifyToken, adminController.getNotifications);
 router.get('/audit-logs', verifyToken, adminController.getAuditLogs);
 router.get('/master-register', verifyToken, adminController.getMasterRegister);
+router.put('/master-register/:id/status', verifyToken, adminController.updateMasterRegisterStatus);
+router.post('/master-register/:id/mark-passed-out', verifyToken, adminController.updateMasterRegisterStatus);
 
 module.exports = router;
 

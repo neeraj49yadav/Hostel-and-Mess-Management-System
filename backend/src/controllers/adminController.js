@@ -751,3 +751,87 @@ exports.getMasterRegister = (req, res) => {
   }
 };
 
+// 🎓 Mark Student as Passed Out / Left in Master Register & Auto-delete Photo from Cloud Storage
+exports.updateMasterRegisterStatus = async (req, res) => {
+  try {
+    const orgId = extractOrgId(req);
+    const { id } = req.params;
+    const { status = 'LEFT', exitReason = 'Passed Out / Alumni', leftDate, adminName } = req.body || {};
+
+    const masterList = db.getCollection('master_register');
+    const masterIndex = masterList.findIndex(m => 
+      (m.id === id || m.originalId === id) && (m.orgId || 'org-default') === orgId
+    );
+
+    if (masterIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Master register record not found' });
+    }
+
+    const masterRecord = masterList[masterIndex];
+    const nowIso = new Date().toISOString();
+    const effectiveLeftDate = leftDate || nowIso;
+    const effectiveExitReason = exitReason || 'Passed Out / Alumni';
+
+    // 🗑️ Delete photo from Supabase Storage / Local to avoid orphaned files
+    const photoToDelete = masterRecord.photoUrl;
+    if (photoToDelete) {
+      await storageService.deleteFile(photoToDelete);
+      masterRecord.photoUrl = '';
+    }
+
+    masterRecord.status = status;
+    masterRecord.leftDate = effectiveLeftDate;
+    masterRecord.exitReason = effectiveExitReason;
+    masterRecord.updatedAt = nowIso;
+    masterList[masterIndex] = masterRecord;
+    db.saveCollection('master_register', masterList);
+
+    // Synchronize active students collection if resident is still currently marked active
+    const targetStudentId = masterRecord.originalId || masterRecord.id;
+    let students = db.getCollectionForOrg('students', orgId);
+    const studentIndex = students.findIndex(s => s.id === targetStudentId || (s.phone && s.phone === masterRecord.phone));
+
+    if (studentIndex !== -1) {
+      const activeStudent = students[studentIndex];
+      if (activeStudent.photoUrl && activeStudent.photoUrl !== photoToDelete) {
+        await storageService.deleteFile(activeStudent.photoUrl);
+      }
+      activeStudent.photoUrl = '';
+      activeStudent.status = 'ARCHIVED';
+      activeStudent.checkoutDate = effectiveLeftDate;
+      activeStudent.checkoutReason = effectiveExitReason;
+      if (activeStudent.enrolledInMess) {
+        activeStudent.enrolledInMess = false;
+        activeStudent.monthlyMessFee = 0;
+      }
+      students[studentIndex] = activeStudent;
+      db.saveCollectionForOrg('students', orgId, students);
+
+      // Refresh room counts
+      const rooms = db.getCollectionForOrg('rooms', orgId);
+      rooms.forEach(r => {
+        r.occupiedBeds = students.filter(s => s.roomId === r.id && s.status !== 'ARCHIVED').length;
+        r.status = r.occupiedBeds >= r.totalBeds ? 'FULL' : 'AVAILABLE';
+      });
+      db.saveCollectionForOrg('rooms', orgId, rooms);
+    }
+
+    // 🛡️ Audit Log
+    logAudit({
+      req,
+      action: 'MASTER_REGISTER_PASSOUT',
+      details: `${adminName || 'Admin'} marked student "${masterRecord.name}" (Phone: ${masterRecord.phone}) as ${status} (${effectiveExitReason}) in Master Register. Cleaned up student photo from cloud storage.`,
+      adminName: adminName || (req.admin && req.admin.name) || 'Admin'
+    });
+
+    res.json({
+      success: true,
+      message: `Student "${masterRecord.name}" marked as ${status}. Photo deleted from cloud storage.`,
+      data: masterRecord
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+

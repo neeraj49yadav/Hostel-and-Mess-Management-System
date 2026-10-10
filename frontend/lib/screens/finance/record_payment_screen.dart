@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/student_search_helper.dart';
 import '../../core/utils/url_helper.dart';
 import '../../models/student.dart';
 import '../../models/payment.dart';
@@ -9,7 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/hostel_provider.dart';
 import '../../providers/mess_provider.dart';
 import '../../providers/dashboard_provider.dart';
-import '../../services/pdf_service.dart';
+import '../../widgets/student_avatar.dart';
 
 class RecordPaymentScreen extends StatefulWidget {
   final Student? preSelectedStudent;
@@ -107,6 +108,144 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
       _rentAmountCtrl.text = rent > 0 ? rent.toStringAsFixed(0) : '';
       _totalAmountCtrl.text = total.toStringAsFixed(0);
     });
+  }
+
+  void _openStudentSearchSheet(
+    List<Student> students,
+    List<Student> allStudents,
+    FormFieldState<String> formState,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        final searchCtrl = TextEditingController();
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final filtered = StudentSearchHelper.filterStudents(students, searchCtrl.text);
+
+            return Padding(
+              padding: EdgeInsets.only(
+                top: 16,
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.75,
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person_search_rounded, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Select Student (${filtered.length})',
+                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: searchCtrl,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Search by name, room, phone, parent...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: searchCtrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  searchCtrl.clear();
+                                  setSheetState(() {});
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                      ),
+                      onChanged: (_) => setSheetState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? Center(
+                              child: Text(
+                                searchCtrl.text.isNotEmpty
+                                    ? 'No students found matching "${searchCtrl.text}"'
+                                    : 'No students available in this category',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, _) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final s = filtered[index];
+                                final isSelected = s.id == _selectedStudentId;
+
+                                return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  leading: StudentAvatar(student: s, radius: 20),
+                                  title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text(
+                                    s.isMessOnly
+                                        ? 'Outside Mess • Phone: ${s.phone}'
+                                        : 'Room ${s.roomNumber} (Bed ${s.bedNo}) • Phone: ${s.phone}',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (_feeType == 'RENT' || _feeType == 'BOTH')
+                                        Text(
+                                          'Rent: ₹${s.rentBalanceDue.toStringAsFixed(0)} due',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: s.rentBalanceDue > 0 ? AppColors.danger : AppColors.success,
+                                          ),
+                                        ),
+                                      if (_feeType == 'MESS' || _feeType == 'BOTH')
+                                        Text(
+                                          'Mess: ₹${s.messBalanceDue.toStringAsFixed(0)} due',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: s.messBalanceDue > 0 ? Colors.orange.shade800 : AppColors.success,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  selected: isSelected,
+                                  selectedTileColor: AppColors.primary.withValues(alpha: 0.1),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    _onStudentChanged(s.id, allStudents);
+                                    formState.didChange(s.id);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _onStudentChanged(String? studentId, List<Student> students) {
@@ -305,31 +444,17 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
               ),
               const SizedBox(height: 16),
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.picture_as_pdf, size: 16),
-                  label: const Text('View & Print PDF Receipt'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.primaryLight
-                        : AppColors.primary,
-                  ),
-                  onPressed: () => PdfService.printReceipt(
-                    payment,
-                    hostelName: context.read<AuthProvider>().currentOrganization?.name,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-
               if (whatsappReceipt != null)
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.chat, color: Color(0xFF25D366), size: 16),
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.chat, color: Colors.white, size: 16),
                     label: const Text('Send WhatsApp Receipt'),
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF25D366))),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                     onPressed: () {
                       final phone = _currentStudent?.phone ?? '';
                       UrlHelper.launchWhatsApp(phone: phone, message: whatsappReceipt['message'] ?? '');
@@ -394,46 +519,107 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Resident Picker
-            DropdownButtonFormField<String>(
-              value: safeSelectedId,
-              decoration: InputDecoration(
-                labelText: _feeType == 'RENT'
-                    ? 'Select Hostel Resident *'
-                    : (_feeType == 'MESS'
-                        ? 'Select Mess Member / Student *'
-                        : 'Select Resident (Hostel + Mess) *'),
-                prefixIcon: Icon(_feeType == 'RENT'
-                    ? Icons.apartment_outlined
-                    : (_feeType == 'MESS' ? Icons.restaurant_outlined : Icons.person_search_outlined)),
-                helperText: _feeType == 'RENT'
-                    ? 'Showing only hostel room residents'
-                    : (_feeType == 'MESS'
-                        ? 'Showing outside mess members & enrolled hostellers'
-                        : 'Showing hostellers enrolled in mess'),
-              ),
-              items: filteredStudents.map((s) {
-                final String detail;
-                if (s.isMessOnly) {
-                  detail = 'Outside Mess • ₹${s.monthlyMessFee.toStringAsFixed(0)}/mo (Due: ₹${s.messBalanceDue.toStringAsFixed(0)})';
-                } else if (_feeType == 'RENT') {
-                  detail = 'Room ${s.roomNumber} • Rent Due: ₹${s.rentBalanceDue.toStringAsFixed(0)}';
-                } else if (_feeType == 'MESS') {
-                  detail = 'Room ${s.roomNumber} • Mess Due: ₹${s.messBalanceDue.toStringAsFixed(0)}';
-                } else {
-                  detail = 'Room ${s.roomNumber} • Rent: ₹${s.rentBalanceDue.toStringAsFixed(0)}, Mess: ₹${s.messBalanceDue.toStringAsFixed(0)}';
-                }
-                return DropdownMenuItem<String>(
-                  value: s.id,
-                  child: Text(
-                    '${s.name} ($detail)',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13),
-                  ),
+            // Resident Search & Picker
+            FormField<String>(
+              initialValue: safeSelectedId,
+              validator: (v) => _selectedStudentId == null ? 'Resident selection required' : null,
+              builder: (state) {
+                final hasError = state.hasError;
+                final isSelected = _currentStudent != null;
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkWell(
+                      onTap: () => _openStudentSearchSheet(filteredStudents, allStudents, state),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: hasError
+                                ? AppColors.danger
+                                : (isSelected ? AppColors.primary : (isDark ? Colors.white24 : Colors.grey.shade400)),
+                            width: isSelected || hasError ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            if (isSelected)
+                              StudentAvatar(student: _currentStudent!, radius: 18)
+                            else
+                              Icon(
+                                _feeType == 'RENT'
+                                    ? Icons.apartment_outlined
+                                    : (_feeType == 'MESS'
+                                        ? Icons.restaurant_outlined
+                                        : Icons.person_search_outlined),
+                                color: AppColors.primary,
+                              ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _feeType == 'RENT'
+                                        ? 'Hostel Resident *'
+                                        : (_feeType == 'MESS'
+                                            ? 'Mess Member / Student *'
+                                            : 'Resident (Hostel + Mess) *'),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: isSelected ? AppColors.primary : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    isSelected
+                                        ? '${_currentStudent!.name} (${_currentStudent!.isMessOnly ? "Outside Mess • Phone: ${_currentStudent!.phone}" : "Room ${_currentStudent!.roomNumber}, Bed ${_currentStudent!.bedNo}"})'
+                                        : 'Tap to search & select student...',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: isSelected
+                                          ? null
+                                          : (isDark ? AppColors.textMutedDark : AppColors.textMutedLight),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (isSelected)
+                              IconButton(
+                                icon: const Icon(Icons.clear, size: 20),
+                                tooltip: 'Clear Selection',
+                                onPressed: () {
+                                  _onStudentChanged(null, allStudents);
+                                  state.didChange(null);
+                                },
+                              )
+                            else
+                              const Icon(Icons.search_rounded, color: AppColors.primary),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (hasError)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12, top: 6),
+                        child: Text(
+                          state.errorText ?? 'Resident selection required',
+                          style: const TextStyle(color: AppColors.danger, fontSize: 12),
+                        ),
+                      ),
+                  ],
                 );
-              }).toList(),
-              onChanged: (val) => _onStudentChanged(val, allStudents),
-              validator: (v) => v == null ? 'Resident selection required' : null,
+              },
             ),
             const SizedBox(height: 16),
 
