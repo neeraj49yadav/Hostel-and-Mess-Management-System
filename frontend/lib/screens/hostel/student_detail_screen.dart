@@ -169,7 +169,6 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     final s = _student!;
     final daysCtrl = TextEditingController(text: '7');
     final reasonCtrl = TextEditingController(text: 'Administrative Extension');
-    String planType = s.isMessOnly ? 'MESS' : (s.enrolledInMess ? 'MESS' : 'RENT');
     bool isSubmitting = false;
 
     showDialog(
@@ -178,7 +177,6 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
-            final canChooseBoth = s.isHostelResident && s.enrolledInMess;
 
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -195,7 +193,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'Extend Validity',
+                      'Extend Mess Plan',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -207,54 +205,49 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Extend plan validity for ${s.name}',
+                      'Extend monthly mess validity for ${s.name}',
                       style: TextStyle(
                         fontSize: 13,
                         color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
 
-                    if (canChooseBoth) ...[
-                      const Text('Select Plan to Extend:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Row(
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDarkSecondary : AppColors.surfaceVariantLight,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isDark ? Colors.white10 : Colors.black12,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ChoiceChip(
-                            label: const Text('Mess Plan'),
-                            selected: planType == 'MESS',
-                            onSelected: (val) {
-                              if (val) setDialogState(() => planType = 'MESS');
-                            },
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Current Expiry:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                              Text(
+                                AppFormatters.formatDate(s.messExpiryDate),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          ChoiceChip(
-                            label: const Text('Hostel Rent'),
-                            selected: planType == 'RENT',
-                            onSelected: (val) {
-                              if (val) setDialogState(() => planType = 'RENT');
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          ChoiceChip(
-                            label: const Text('Both'),
-                            selected: planType == 'BOTH',
-                            onSelected: (val) {
-                              if (val) setDialogState(() => planType = 'BOTH');
-                            },
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Current Cycle Day:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                              Text(
+                                'Day ${s.cycleDay} of month',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    Text(
-                      planType == 'MESS'
-                          ? 'Current Mess Expiry: ${AppFormatters.formatDate(s.messExpiryDate)}'
-                          : (planType == 'RENT'
-                              ? 'Current Rent Expiry: ${AppFormatters.formatDate(s.rentExpiryDate)}'
-                              : 'Current Expiry: Mess (${AppFormatters.formatDate(s.messExpiryDate)}), Rent (${AppFormatters.formatDate(s.rentExpiryDate)})'),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
                     ),
                     const SizedBox(height: 14),
 
@@ -268,7 +261,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
 
                     Wrap(
                       spacing: 8,
@@ -291,6 +284,29 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                         labelText: 'Reason for Extension (Optional)',
                         hintText: 'e.g. Holiday adjustment, Exam period, Medical',
                         border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'The student\'s monthly billing cycle and next renewal date will automatically shift forward by the extension days.',
+                              style: TextStyle(fontSize: 11, color: Colors.blue),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -328,7 +344,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                           final success = await hostel.extendStudentPlan(
                             studentId: s.id,
                             days: days,
-                            planType: planType,
+                            planType: 'MESS',
                             reason: reasonCtrl.text.trim(),
                             adminName: adminName,
                           );
@@ -339,7 +355,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                             if (success) {
                               messenger.showSnackBar(
                                 SnackBar(
-                                  content: Text('✅ Validity extended by $days days for ${s.name}'),
+                                  content: Text('✅ Mess validity & billing cycle extended by $days days for ${s.name}'),
                                   backgroundColor: AppColors.success,
                                 ),
                               );
@@ -356,7 +372,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                         },
                   child: isSubmitting
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Extend Plan', style: TextStyle(color: Colors.white)),
+                      : const Text('Extend Mess Plan', style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -518,11 +534,12 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
               _loadStudentDetails();
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.more_time_rounded),
-            tooltip: 'Extend Plan Validity',
-            onPressed: _showExtendPlanDialog,
-          ),
+          if (s.enrolledInMess)
+            IconButton(
+              icon: const Icon(Icons.more_time_rounded),
+              tooltip: 'Extend Mess Plan',
+              onPressed: _showExtendPlanDialog,
+            ),
           if (!s.isMessOnly)
             IconButton(
               icon: const Icon(Icons.swap_horiz_rounded),
@@ -863,12 +880,14 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                             },
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          icon: const Icon(Icons.more_time_rounded),
-                          tooltip: 'Extend Plan Validity',
-                          onPressed: _showExtendPlanDialog,
-                        ),
+                        if (s.enrolledInMess) ...[
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            icon: const Icon(Icons.more_time_rounded),
+                            tooltip: 'Extend Mess Plan',
+                            onPressed: _showExtendPlanDialog,
+                          ),
+                        ],
                       ],
                     ),
                   ],

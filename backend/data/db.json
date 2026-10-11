@@ -359,7 +359,7 @@
       "bedNo": "-",
       "admissionDate": "2026-08-25",
       "messStartDate": "2026-08-25",
-      "cycleDay": 25,
+      "cycleDay": 1,
       "monthlyMessFee": 3500,
       "messExpiryDate": "2026-11-01",
       "rentTermMonths": 0,
@@ -380,8 +380,8 @@
       "planValidityType": "MONTHLY",
       "planValidityDays": null,
       "totalRentAgreed": 0,
-      "updatedAt": "2026-10-11T18:37:41.925Z",
-      "planExtensionDays": 8
+      "updatedAt": "2026-10-11T19:00:00.751Z",
+      "planExtensionDays": 7
     },
     {
       "id": "mess-mem-045a8024",

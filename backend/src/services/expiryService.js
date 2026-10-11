@@ -44,17 +44,20 @@ function calculateCycleStatus(expiryDateStr, thresholdDays = 5) {
 /**
  * Calculate billing cycles and current cycle boundaries from messStartDate and cycleDay
  */
-function getMessCycleBoundaries(messStartDateStr, cycleDay, asOfDate = new Date()) {
+function getMessCycleBoundaries(messStartDateStr, cycleDay, asOfDate = new Date(), planExtensionDays = 0) {
   const today = new Date(asOfDate);
   today.setHours(0, 0, 0, 0);
 
   const start = new Date(messStartDateStr || today);
   start.setHours(0, 0, 0, 0);
 
-  // If start is in the future, 1st cycle is [start, start + 1 month]
+  const extDays = parseInt(planExtensionDays) || 0;
+
+  // If start is in the future, 1st cycle is [start, start + 1 month + extension]
   if (today < start) {
     const end = new Date(start);
     end.setMonth(end.getMonth() + 1);
+    if (extDays > 0) end.setDate(end.getDate() + extDays);
     return {
       cycleCount: 1,
       currentCycleStart: start.toISOString().split('T')[0],
@@ -67,10 +70,12 @@ function getMessCycleBoundaries(messStartDateStr, cycleDay, asOfDate = new Date(
   let curStart = new Date(start);
   let nextCycle = new Date(start);
   nextCycle.setMonth(nextCycle.getMonth() + 1);
+  if (extDays > 0) nextCycle.setDate(nextCycle.getDate() + extDays);
 
   while (nextCycle <= today) {
     cycleCount++;
     curStart = new Date(nextCycle);
+    nextCycle = new Date(curStart);
     nextCycle.setMonth(nextCycle.getMonth() + 1);
   }
 
@@ -178,7 +183,7 @@ function calculateMessLedger(student, studentPayments = [], asOfDate = new Date(
 
   // 2. CASE: REGULAR MONTHLY SUBSCRIPTION (With Plan Change Rollover Support)
   const messStartDate = student.messStartDate || student.admissionDate || student.createdAt || new Date().toISOString().split('T')[0];
-  const cycleInfo = getMessCycleBoundaries(messStartDate, student.cycleDay || 1, asOfDate);
+  const cycleInfo = getMessCycleBoundaries(messStartDate, student.cycleDay || 1, asOfDate, student.planExtensionDays || 0);
 
   // Calculate Total Mess Billed taking into account plan change history
   // If plan changed (e.g. student.messPlanHistory), each cycle used the fee in effect at that time.

@@ -669,12 +669,12 @@ exports.deleteStudent = async (req, res) => {
   }
 };
 
-// Extend Plan Validity for an individual student (Mess and/or Rent)
+// Extend Mess Plan Validity for an individual student
 exports.extendPlan = async (req, res) => {
   try {
     const orgId = extractOrgId(req);
     const { id } = req.params;
-    const { days, planType = 'MESS', reason = 'Admin Extension', adminName = 'Admin' } = req.body;
+    const { days, reason = 'Admin Extension', adminName = 'Admin' } = req.body;
 
     const extensionDays = parseInt(days);
     if (isNaN(extensionDays) || extensionDays === 0) {
@@ -688,31 +688,25 @@ exports.extendPlan = async (req, res) => {
     }
 
     const student = students[index];
+    if (!student.enrolledInMess && student.memberType !== 'MESS_ONLY') {
+      return res.status(400).json({ success: false, message: 'Student is not enrolled in the mess plan' });
+    }
+
     const prevMessExpiry = student.messExpiryDate;
-    const prevRentExpiry = student.rentExpiryDate;
 
-    if (planType === 'MESS' || planType === 'BOTH') {
-      let baseDate;
-      if (student.messExpiryDate && !isNaN(new Date(student.messExpiryDate).getTime())) {
-        baseDate = new Date(student.messExpiryDate);
-      } else {
-        baseDate = new Date();
-      }
-      baseDate.setDate(baseDate.getDate() + extensionDays);
-      student.messExpiryDate = baseDate.toISOString().split('T')[0];
-      student.planExtensionDays = (parseInt(student.planExtensionDays) || 0) + extensionDays;
+    let baseDate;
+    if (student.messExpiryDate && !isNaN(new Date(student.messExpiryDate).getTime())) {
+      baseDate = new Date(student.messExpiryDate);
+    } else {
+      baseDate = new Date();
     }
+    baseDate.setDate(baseDate.getDate() + extensionDays);
+    const newExpiryDateStr = baseDate.toISOString().split('T')[0];
 
-    if (planType === 'RENT' || planType === 'BOTH') {
-      let baseDate;
-      if (student.rentExpiryDate && !isNaN(new Date(student.rentExpiryDate).getTime())) {
-        baseDate = new Date(student.rentExpiryDate);
-      } else {
-        baseDate = new Date();
-      }
-      baseDate.setDate(baseDate.getDate() + extensionDays);
-      student.rentExpiryDate = baseDate.toISOString().split('T')[0];
-    }
+    // Update messExpiryDate, accumulated extension days, and billing cycleDay
+    student.messExpiryDate = newExpiryDateStr;
+    student.planExtensionDays = (parseInt(student.planExtensionDays) || 0) + extensionDays;
+    student.cycleDay = baseDate.getDate();
 
     student.updatedAt = new Date().toISOString();
     db.saveCollectionForOrg('students', orgId, students);
@@ -720,8 +714,8 @@ exports.extendPlan = async (req, res) => {
 
     logAudit({
       req,
-      action: 'EXTEND_STUDENT_PLAN',
-      details: `Extended ${planType} plan for ${student.name} by ${extensionDays > 0 ? '+' : ''}${extensionDays} days. Previous mess expiry: ${prevMessExpiry || 'N/A'} -> New: ${student.messExpiryDate || 'N/A'}. Reason: "${reason}"`,
+      action: 'EXTEND_MESS_PLAN',
+      details: `Extended Mess plan for ${student.name} by ${extensionDays > 0 ? '+' : ''}${extensionDays} days. Previous expiry: ${prevMessExpiry || 'N/A'} -> New Expiry & Billing Cycle: ${student.messExpiryDate}. Reason: "${reason}"`,
       adminName
     });
 
@@ -730,7 +724,7 @@ exports.extendPlan = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Successfully extended plan by ${extensionDays > 0 ? '+' : ''}${extensionDays} days for ${student.name}`,
+      message: `Successfully extended Mess plan by ${extensionDays > 0 ? '+' : ''}${extensionDays} days for ${student.name}. Billing cycle updated to day ${student.cycleDay}.`,
       data: enriched
     });
   } catch (err) {
