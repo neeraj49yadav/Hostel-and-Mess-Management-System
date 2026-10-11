@@ -258,4 +258,29 @@ class HostelProvider with ChangeNotifier {
       return false;
     }
   }
+
+  Future<bool> extendStudentPlan({
+    required String studentId,
+    required int days,
+    String planType = 'MESS',
+    String? reason,
+    String? adminName,
+  }) async {
+    try {
+      await _api.extendStudentPlan(
+        studentId: studentId,
+        days: days,
+        planType: planType,
+        reason: reason,
+        adminName: adminName,
+      );
+      await fetchStudents();
+      return true;
+    } catch (e) {
+      _error = e.toString().replaceAll('Exception:', '').trim();
+      notifyListeners();
+      return false;
+    }
+  }
 }
+

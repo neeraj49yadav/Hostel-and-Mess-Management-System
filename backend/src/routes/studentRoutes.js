@@ -9,5 +9,6 @@ router.put('/:id', studentController.updateStudent);
 router.delete('/:id', studentController.deleteStudent);
 router.post('/:id/shift-bed', studentController.shiftBed);
 router.post('/:id/checkout', studentController.checkoutStudent);
+router.post('/:id/extend-plan', studentController.extendPlan);
 
 module.exports = router;

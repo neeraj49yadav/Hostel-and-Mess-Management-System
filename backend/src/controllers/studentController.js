@@ -669,3 +669,73 @@ exports.deleteStudent = async (req, res) => {
   }
 };
 
+// Extend Plan Validity for an individual student (Mess and/or Rent)
+exports.extendPlan = async (req, res) => {
+  try {
+    const orgId = extractOrgId(req);
+    const { id } = req.params;
+    const { days, planType = 'MESS', reason = 'Admin Extension', adminName = 'Admin' } = req.body;
+
+    const extensionDays = parseInt(days);
+    if (isNaN(extensionDays) || extensionDays === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid number of days to extend' });
+    }
+
+    let students = db.getCollectionForOrg('students', orgId);
+    const index = students.findIndex(s => s.id === id);
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: 'Student record not found' });
+    }
+
+    const student = students[index];
+    const prevMessExpiry = student.messExpiryDate;
+    const prevRentExpiry = student.rentExpiryDate;
+
+    if (planType === 'MESS' || planType === 'BOTH') {
+      let baseDate;
+      if (student.messExpiryDate && !isNaN(new Date(student.messExpiryDate).getTime())) {
+        baseDate = new Date(student.messExpiryDate);
+      } else {
+        baseDate = new Date();
+      }
+      baseDate.setDate(baseDate.getDate() + extensionDays);
+      student.messExpiryDate = baseDate.toISOString().split('T')[0];
+      student.planExtensionDays = (parseInt(student.planExtensionDays) || 0) + extensionDays;
+    }
+
+    if (planType === 'RENT' || planType === 'BOTH') {
+      let baseDate;
+      if (student.rentExpiryDate && !isNaN(new Date(student.rentExpiryDate).getTime())) {
+        baseDate = new Date(student.rentExpiryDate);
+      } else {
+        baseDate = new Date();
+      }
+      baseDate.setDate(baseDate.getDate() + extensionDays);
+      student.rentExpiryDate = baseDate.toISOString().split('T')[0];
+    }
+
+    student.updatedAt = new Date().toISOString();
+    db.saveCollectionForOrg('students', orgId, students);
+    db.upsertMasterRegister(student, orgId);
+
+    logAudit({
+      req,
+      action: 'EXTEND_STUDENT_PLAN',
+      details: `Extended ${planType} plan for ${student.name} by ${extensionDays > 0 ? '+' : ''}${extensionDays} days. Previous mess expiry: ${prevMessExpiry || 'N/A'} -> New: ${student.messExpiryDate || 'N/A'}. Reason: "${reason}"`,
+      adminName
+    });
+
+    const payments = db.getCollectionForOrg('payments', orgId).filter(p => p.studentId === id);
+    const enriched = enrichStudent(student, payments);
+
+    res.json({
+      success: true,
+      message: `Successfully extended plan by ${extensionDays > 0 ? '+' : ''}${extensionDays} days for ${student.name}`,
+      data: enriched
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+

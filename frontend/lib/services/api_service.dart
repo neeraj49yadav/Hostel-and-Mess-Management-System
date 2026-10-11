@@ -486,6 +486,21 @@ class ApiService {
     });
   }
 
+  Future<Map<String, dynamic>> extendStudentPlan({
+    required String studentId,
+    required int days,
+    String planType = 'MESS',
+    String? reason,
+    String? adminName,
+  }) async {
+    return await _post('${ApiConstants.students}/$studentId/extend-plan', {
+      'days': days,
+      'planType': planType,
+      'reason': reason ?? 'Admin Extension',
+      'adminName': adminName ?? 'Admin',
+    });
+  }
+
   // --- 4. Rooms ---
   Future<List<Room>> getRooms() async {
     final res = await _get(ApiConstants.rooms);
